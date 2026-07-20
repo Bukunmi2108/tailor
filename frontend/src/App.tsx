@@ -9,6 +9,7 @@ import {
   Plus,
   SignOut,
   DotsThree,
+  Stop,
   UploadSimple,
   Warning,
 } from "@phosphor-icons/react";
@@ -34,6 +35,12 @@ import type {
 
 type Preview = "resume" | "cover";
 type ActiveReview = { messageId: string; partId: string };
+type ExportKind = "resume" | "cover" | "both";
+type ExportState =
+  | { status: "idle" }
+  | { status: "preparing" | "slow" | "waking"; kind: ExportKind }
+  | { status: "success"; message: string }
+  | { status: "error"; message: string };
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
@@ -109,6 +116,7 @@ function App() {
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "failed">("saved");
   const [activeReview, setActiveReview] = useState<ActiveReview>();
+  const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
   const importRef = useRef<HTMLInputElement>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -119,9 +127,11 @@ function App() {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const socketRef = useRef<WebSocket | undefined>(undefined);
+  const activeAssistantId = useRef<string | undefined>(undefined);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const validationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const validationGeneration = useRef(0);
+  const exportTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const reviewBases = useRef(new Map<string, Resume>());
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
@@ -173,6 +183,7 @@ function App() {
   }, [revision, preview, session?.coverLetter]);
   useEffect(() => () => socketRef.current?.close(), []);
   useEffect(() => () => clearTimeout(validationTimer.current), []);
+  useEffect(() => () => exportTimers.current.forEach(clearTimeout), []);
   const estimatedPages = useMemo(
     () => Math.max(1, Math.ceil((previewHtml.match(/<section/g) || []).length / 3)),
     [previewHtml],
@@ -382,12 +393,26 @@ function App() {
       );
       persistSessionPatch({ coverLetter }, next);
     },
+    onEditMessage: (messageId, text) => {
+      const target = messagesRef.current.find((m) => m.id === messageId);
+      if (!target || target.role !== "user") return;
+      socketRef.current?.close();
+      socketRef.current = undefined;
+      activeAssistantId.current = undefined;
+      void runTurn(text, {
+        historyOverride: target.messageHistoryBefore ?? [],
+        truncateBeforeMessageId: messageId,
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
-  async function sendMessage() {
-    const text = draft.trim();
-    if (!text || connecting) return;
+  async function runTurn(
+    text: string,
+    options?: { historyOverride?: unknown[]; truncateBeforeMessageId?: string },
+  ) {
+    const trimmed = text.trim();
+    if (!trimmed || connecting) return;
     setError("");
     let currentSession = sessionRef.current;
     let currentRevision = revisionRef.current;
@@ -422,12 +447,23 @@ function App() {
       setWorkingResume(currentRevision.resume);
     }
 
+    let baseTranscript = messagesRef.current;
+    if (options?.truncateBeforeMessageId) {
+      const index = baseTranscript.findIndex((m) => m.id === options.truncateBeforeMessageId);
+      if (index !== -1) baseTranscript = baseTranscript.slice(0, index);
+    }
+
+    const activeSession = currentSession;
+    const historyForRequest = options?.historyOverride
+      ?? (activeSession.messageHistory.length ? activeSession.messageHistory : null);
+
     const userMessage: ChatMessage = {
       id: id("msg"),
       role: "user",
-      content: text,
+      content: trimmed,
       createdAt: now(),
       status: "complete",
+      messageHistoryBefore: historyForRequest ?? [],
     };
     const assistantId = id("msg");
     const assistantMessage: ChatMessage = {
@@ -437,23 +473,25 @@ function App() {
       createdAt: now(),
       status: "streaming",
     };
-    let transcript = [...messagesRef.current, userMessage, assistantMessage];
+    let transcript = [...baseTranscript, userMessage, assistantMessage];
+    messagesRef.current = transcript;
     setMessages(transcript);
     setDraft("");
     setConnecting(true);
+    activeAssistantId.current = assistantId;
 
-    const activeSession = currentSession;
     const activeRevision = currentRevision!;
     const chatResume = workingResumeRef.current ?? activeRevision.resume;
     socketRef.current = connectChat(
       {
-        message: text,
-        message_history: activeSession.messageHistory.length ? activeSession.messageHistory : null,
+        message: trimmed,
+        message_history: historyForRequest,
         resume: chatResume,
         analysis: activeSession.currentAnalysis ?? null,
       },
       (event) => {
         transcript = applyServerEvent(transcript, assistantId, event);
+        messagesRef.current = transcript;
         setMessages(transcript);
         if (event.type === "analysis.completed") {
           persistSessionPatch({
@@ -470,17 +508,61 @@ function App() {
           persistSessionPatch({}, transcript);
         }
       },
-      () => setConnecting(false),
+      () => {
+        if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
+        setConnecting(false);
+      },
       (message) => {
+        if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
         setError(message);
         setConnecting(false);
       },
     );
   }
 
-  async function exportArtifact(kind: "resume" | "cover" | "both") {
+  function sendMessage() {
+    return runTurn(draft);
+  }
+
+  function stopGeneration() {
+    socketRef.current?.close();
+    socketRef.current = undefined;
+    const assistantId = activeAssistantId.current;
+    if (assistantId) {
+      const next = messagesRef.current.map((message) =>
+        message.id === assistantId
+          ? {
+              ...message,
+              status: "stopped" as const,
+              parts: (message.parts ?? []).map((part) =>
+                part.type === "reasoning" || part.type === "text"
+                  ? { ...part, status: "complete" as const }
+                  : part,
+              ),
+            }
+          : message,
+      );
+      messagesRef.current = next;
+      setMessages(next);
+      persistSessionPatch({}, next);
+    }
+    activeAssistantId.current = undefined;
+    setConnecting(false);
+  }
+
+  async function exportArtifact(kind: ExportKind) {
     if (!session || !revision || !workingResume) return;
     setError("");
+    exportTimers.current.forEach(clearTimeout);
+    exportTimers.current = [
+      setTimeout(() => setExportState((state) =>
+        state.status === "preparing" ? { status: "slow", kind } : state,
+      ), 2000),
+      setTimeout(() => setExportState((state) =>
+        state.status === "preparing" || state.status === "slow" ? { status: "waking", kind } : state,
+      ), 8000),
+    ];
+    setExportState({ status: "preparing", kind });
     try {
       let result;
       if (kind === "resume")
@@ -500,8 +582,21 @@ function App() {
         result.blob,
         `${(session.company || "tailored").toLowerCase().replace(/\W+/g, "-")}-${kind}.${ext}`,
       );
+      const pages = kind === "both"
+        ? result.headers.get("X-Resume-Page-Count")
+        : result.headers.get("X-Page-Count");
+      setExportState({
+        status: "success",
+        message: pages ? `Downloaded, ${pages} page${pages === "1" ? "" : "s"}` : "Download ready",
+      });
+      exportTimers.current.push(setTimeout(() => setExportState({ status: "idle" }), 5000));
     } catch (value) {
-      setError(value instanceof Error ? value.message : "Export failed");
+      setExportState({
+        status: "error",
+        message: value instanceof Error ? value.message : "Export failed. Please try again.",
+      });
+    } finally {
+      exportTimers.current.slice(0, 2).forEach(clearTimeout);
     }
   }
 
@@ -692,9 +787,15 @@ function App() {
                   }
                 }}
               />
-              <button type="submit" disabled={connecting || !draft.trim()}>
-                <PaperPlaneTilt />
-              </button>
+              {connecting ? (
+                <button type="button" onClick={stopGeneration} title="Stop generating">
+                  <Stop weight="fill" />
+                </button>
+              ) : (
+                <button type="submit" disabled={!draft.trim()}>
+                  <PaperPlaneTilt />
+                </button>
+              )}
             </form>
             <span className={`save-state ${saveState}`}>{saveState}</span>
           </div>}
@@ -717,16 +818,31 @@ function App() {
               About {estimatedPages} page{estimatedPages === 1 ? "" : "s"}
             </span>
             <div className="export-menu">
-              <button disabled={!revision} onClick={() => exportArtifact(preview)}>
+              <button
+                disabled={!revision || exportState.status === "preparing" || exportState.status === "slow" || exportState.status === "waking"}
+                onClick={() => exportArtifact(preview)}
+              >
                 <DownloadSimple />
-                PDF
+                {exportState.status === "preparing" && exportState.kind === preview ? "Preparing…" : "PDF"}
               </button>
-              <button disabled={!session?.coverLetter} onClick={() => exportArtifact("both")}>
+              <button
+                disabled={!session?.coverLetter || exportState.status === "preparing" || exportState.status === "slow" || exportState.status === "waking"}
+                onClick={() => exportArtifact("both")}
+              >
                 <FileArrowDown />
-                Both
+                {exportState.status === "preparing" && exportState.kind === "both" ? "Preparing…" : "Both"}
               </button>
             </div>
           </div>
+          {exportState.status !== "idle" && (
+            <div className={`export-status ${exportState.status}`} role="status" aria-live="polite">
+              {exportState.status === "preparing" && "Preparing your PDF…"}
+              {exportState.status === "slow" && "Rendering the document. This may take a moment."}
+              {exportState.status === "waking" && "The export service may be waking up. Your work is safe."}
+              {(exportState.status === "success" || exportState.status === "error") && exportState.message}
+              {exportState.status === "error" && <button onClick={() => setExportState({ status: "idle" })}>Dismiss</button>}
+            </div>
+          )}
           {previewHtml ? (
             <iframe
               ref={previewRef}

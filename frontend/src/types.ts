@@ -153,7 +153,8 @@ export type ChatMessage = {
   content?: string;
   parts?: MessagePart[];
   createdAt: string;
-  status?: "streaming" | "complete" | "error";
+  status?: "streaming" | "complete" | "error" | "stopped";
+  messageHistoryBefore?: unknown[];
 };
 
 type EventBase = { event_id: string; sequence: number; timestamp: string };

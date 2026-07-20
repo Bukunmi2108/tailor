@@ -61,7 +61,6 @@ experience:
     title: ICT Manager & Instructor
     location: ""
     dates: 2022 – 2024
-    page_break_before: true
     bullets:
       - {id: exp.glory.b1, text: Built and maintained digital examination and e-learning platforms (99.9% uptime); implemented JWT authentication and role-based access control., tags: [platforms, jwt, rbac]}
       - {id: exp.glory.b2, text: "Delivered a school management platform (Python + React + Docker; 1,400+ books, 3,000+ videos; 35+ PRs).", tags: [python, react, docker]}
@@ -107,7 +106,7 @@ certifications:
   - {id: cert.financial_engineering, text: Foundations of Financial Engineering – WorldQuant University}
   - {id: cert.llms, text: Fundamentals of LLMs – DeepLearning.AI}
   - {id: cert.advanced_learning, text: Advanced Learning Algorithms – Coursera ML Specialization}
-  - {id: cert.unsupervised, text: "Unsupervised Learning, Recommenders, Reinforcement Learning – Coursera ML Specialization", page_break_before: true}
+  - {id: cert.unsupervised, text: "Unsupervised Learning, Recommenders, Reinforcement Learning – Coursera ML Specialization"}
   - {id: cert.oracle, text: Oracle Cloud Infrastructure 2025 Certified AI Foundations Associate – September 2025}
   - {id: cert.applied_ds, text: Applied Data Science Lab – WorldQuant University}
   - {id: cert.clio, text: Clio Certified Administrator (Legal Practice Management) – September 2025}

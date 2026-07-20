@@ -1,11 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CaretDown,
-  Check,
-  CircleNotch,
-  Warning,
-  Wrench,
-} from "@phosphor-icons/react";
+import { CaretDown, Check, Copy, PencilSimple, Warning } from "@phosphor-icons/react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -90,22 +84,42 @@ function ReasoningPanel({ text, streaming }: { text: string; streaming: boolean 
 
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
+const TOOL_LABELS: Record<string, string> = {
+  search_resume: "Searching resume evidence",
+  inspect_resume_evidence: "Checking evidence",
+  inspect_job_requirements: "Checking requirements",
+  analyze_job_description: "Analyzing the role",
+  propose_edits: "Proposing edits",
+  draft_cover_letter: "Drafting cover letter",
+};
+
+function toolLabel(tool: string): string {
+  return TOOL_LABELS[tool] ?? "Working…";
+}
+
+function summaryLabel(tools: ToolPart[]): string {
+  const running = tools.filter((tool) => tool.status === "running");
+  const active = running.length ? running : tools;
+  const labels = new Set(active.map((tool) => toolLabel(tool.tool)));
+  return labels.size === 1 ? [...labels][0] : "Working…";
+}
+
 function ToolTrace({ tools }: { tools: ToolPart[] }) {
   const [open, setOpen] = useState(false);
   const running = tools.some((tool) => tool.status === "running");
   return (
     <details className="tool-trace" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
-        {running ? <CircleNotch className="spin" /> : <Wrench />}
-        {running ? "Checking resume evidence…" : `Used ${tools.length} resume tool${tools.length === 1 ? "" : "s"}`}
+        <CaretDown className={open ? "open" : ""} />
+        <span className={`tool-trace__dot ${running ? "running" : "complete"}`} />
+        <span className="tool-trace__label">{summaryLabel(tools)}</span>
+        <span className="tool-trace__count">{tools.length}</span>
       </summary>
-      <ol>
+      <ol className="tool-trace__timeline">
         {tools.map((tool) => (
           <li key={tool.id}>
-            <span className={`tool-status ${tool.status}`}>
-              {tool.status === "running" ? <CircleNotch className="spin" /> : <Check />}
-            </span>
-            <code>{tool.tool}</code>
+            <span className={`tool-status ${tool.status}`} />
+            <span>{toolLabel(tool.tool)}</span>
           </li>
         ))}
       </ol>
@@ -143,6 +157,7 @@ function groupParts(parts: MessagePart[]): Grouped[] {
 export type ChatActions = {
   onReviewEdits: (messageId: string, partId: string) => void;
   onCoverLetterChange: (messageId: string, partId: string, coverLetter: CoverLetter) => void;
+  onEditMessage: (messageId: string, text: string) => void;
 };
 
 const MessageBubble = memo(function MessageBubble({
@@ -156,6 +171,40 @@ const MessageBubble = memo(function MessageBubble({
   const reasoning = parts.find((part) => part.type === "reasoning");
   const groups = useMemo(() => groupParts(parts.filter((part) => part.type !== "reasoning")), [parts]);
   const streaming = message.status === "streaming";
+  const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content ?? "");
+
+  const assistantText = useMemo(() => {
+    if (message.content) return message.content;
+    return parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n\n");
+  }, [message.content, parts]);
+  const copyText = message.role === "user" ? message.content ?? "" : assistantText;
+
+  async function copy() {
+    if (!copyText) return;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // clipboard access denied; nothing else to fall back to
+    }
+  }
+
+  function startEdit() {
+    setEditText(message.content ?? "");
+    setEditing(true);
+  }
+
+  function saveEdit() {
+    const text = editText.trim();
+    setEditing(false);
+    if (text && text !== message.content) actions.onEditMessage(message.id, text);
+  }
 
   return (
     <article className={`message-bubble ${message.role}`}>
@@ -203,7 +252,48 @@ const MessageBubble = memo(function MessageBubble({
             return null;
         }
       })}
-      {message.role === "user" && <p className="message-text">{message.content}</p>}
+      {message.role === "user" && (
+        editing ? (
+          <div className="message-edit">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  saveEdit();
+                } else if (e.key === "Escape") {
+                  setEditing(false);
+                }
+              }}
+              autoFocus
+              rows={1}
+            />
+            <div className="message-edit__actions">
+              <button type="button" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button type="button" className="primary" onClick={saveEdit}>
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="message-text">{message.content}</p>
+        )
+      )}
+      {!editing && (message.role === "user" || assistantText) && (
+        <div className="message-actions">
+          <button type="button" className="icon-button" title="Copy" onClick={() => void copy()}>
+            {copied ? <Check /> : <Copy />}
+          </button>
+          {message.role === "user" && (
+            <button type="button" className="icon-button" title="Edit" onClick={startEdit}>
+              <PencilSimple />
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 });

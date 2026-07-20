@@ -6,6 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import (
+    FunctionToolResultEvent,
     ModelMessagesTypeAdapter,
     PartDeltaEvent,
     PartStartEvent,
@@ -101,6 +102,11 @@ async def chat_websocket(websocket: WebSocket) -> None:
 
 
 async def _handle_event(event: Any, events: EventSender) -> None:
+    if isinstance(event, FunctionToolResultEvent):
+        # Every tool call resolves here regardless of which tool ran, so no tool call can
+        # ever leave its activity indicator stuck in "running" on the frontend.
+        await events.send("tool.result", tool=event.part.tool_name)
+        return
     if isinstance(event, PartStartEvent):
         if isinstance(event.part, ThinkingPart) and event.part.content:
             await events.send("reasoning.delta", text=event.part.content)

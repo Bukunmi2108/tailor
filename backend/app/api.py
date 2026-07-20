@@ -135,14 +135,18 @@ def _pdf_response(pdf: bytes, pages: int, digest: str, filename: str) -> Respons
 
 @router.post("/export/resume", dependencies=[Depends(require_auth)])
 def export_resume(payload: ResumeExportRequest):
-    pdf, pages, digest = pdf_from_html(render_resume(payload.resume, payload.template_version))
+    pdf, pages, digest = pdf_from_html(
+        render_resume(payload.resume, payload.template_version, embed_fonts=False)
+    )
     name = safe_slug(f"{payload.company}-{payload.role_title}-resume")
     return _pdf_response(pdf, pages, digest, f"{name}.pdf")
 
 
 @router.post("/export/cover-letter", dependencies=[Depends(require_auth)])
 def export_cover(payload: CoverExportRequest):
-    pdf, pages, digest = pdf_from_html(render_cover(payload.cover_letter, payload.template_version))
+    pdf, pages, digest = pdf_from_html(
+        render_cover(payload.cover_letter, payload.template_version, embed_fonts=False)
+    )
     name = safe_slug(f"{payload.company}-{payload.role_title}-cover-letter")
     return _pdf_response(pdf, pages, digest, f"{name}.pdf")
 
@@ -150,10 +154,10 @@ def export_cover(payload: CoverExportRequest):
 @router.post("/export/both", dependencies=[Depends(require_auth)])
 def export_both(payload: BothExportRequest):
     resume_pdf, resume_pages, resume_hash = pdf_from_html(
-        render_resume(payload.resume, payload.resume_template_version)
+        render_resume(payload.resume, payload.resume_template_version, embed_fonts=False)
     )
     cover_pdf, cover_pages, cover_hash = pdf_from_html(
-        render_cover(payload.cover_letter, payload.cover_template_version)
+        render_cover(payload.cover_letter, payload.cover_template_version, embed_fonts=False)
     )
     stem = safe_slug(f"{payload.company}-{payload.role_title}")
     buffer = io.BytesIO()
