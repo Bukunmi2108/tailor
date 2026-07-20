@@ -436,7 +436,15 @@ function App() {
 
     const activeRevision = currentRevision!;
     const chatResume = workingResumeRef.current ?? activeRevision.resume;
-    const socket = connectChat(
+    let socket: WebSocket;
+    const finishTurn = () => {
+      if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
+      socketRef.current = undefined;
+      activeAssistantId.current = undefined;
+      setConnecting(false);
+      if (socket.readyState === WebSocket.OPEN) socket.close(1000, "Turn complete");
+    };
+    socket = connectChat(
       {
         message: trimmed,
         message_history: historyForRequest,
@@ -460,9 +468,11 @@ function App() {
           reviewBases.current.set(event.plan.base_snapshot_hash, structuredClone(chatResume));
         } else if (event.type === "message.completed") {
           updateSession({ messageHistory: event.message_history }, transcript);
+          finishTurn();
         } else if (event.type === "error") {
           setError(event.message);
           updateSession({}, transcript);
+          finishTurn();
         }
       },
       () => {
