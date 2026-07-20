@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Archive,
   ArrowClockwise,
@@ -98,11 +105,17 @@ function Login({ onDone }: { onDone: () => void }) {
 }
 
 function Diff({ edit }: { edit: Edit }) {
-  if (typeof edit.before !== "string" || typeof edit.after !== "string")
-    return <p className="operation">{edit.op.replaceAll("_", " ")}</p>;
+  const parts = useMemo(
+    () =>
+      typeof edit.before === "string" && typeof edit.after === "string"
+        ? wordDiff(edit.before, edit.after)
+        : undefined,
+    [edit.before, edit.after],
+  );
+  if (!parts) return <p className="operation">{edit.op.replaceAll("_", " ")}</p>;
   return (
     <p className="diff">
-      {wordDiff(edit.before, edit.after).map((part, index) => (
+      {parts.map((part, index) => (
         <span key={index} className={part.kind}>
           {part.value}
         </span>
@@ -111,7 +124,7 @@ function Diff({ edit }: { edit: Edit }) {
   );
 }
 
-function EditCard({
+const EditCard = memo(function EditCard({
   edit,
   decision,
   onDecision,
@@ -193,7 +206,7 @@ function EditCard({
       </div>
     </article>
   );
-}
+});
 
 function App() {
   const [authenticated, setAuthenticated] = useState(Boolean(token.get()));
@@ -213,6 +226,10 @@ function App() {
     "saved",
   );
   const importRef = useRef<HTMLInputElement>(null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const revisionRef = useRef(revision);
+  revisionRef.current = revision;
   const refreshSessions = useCallback(
     async () =>
       setSessions(
@@ -325,9 +342,16 @@ function App() {
       setSaveState("failed");
     }
   }
+  const patchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   function patchSession(patch: Partial<Session>) {
     if (!session) return;
-    void persistSession({ ...session, ...patch, updatedAt: now() });
+    const next = { ...session, ...patch, updatedAt: now() };
+    setSession(next);
+    setSaveState("saving");
+    clearTimeout(patchTimer.current);
+    patchTimer.current = setTimeout(() => void persistSession(next), 400);
   }
   async function analyze() {
     if (!session || !revision || session.jdRaw.trim().length < 30) return;
@@ -373,66 +397,75 @@ function App() {
       setBusy("");
     }
   }
-  async function applyDecisions(decisions: Decision[]) {
-    if (!session || !revision || !session.plan) return;
-    setBusy("Applying decisions");
-    setError("");
-    try {
-      await withSessionLock(session.sessionId, async () => {
-        const history = await db.sessionRevisions(session.sessionId);
-        const planBase = history.find(
-          (item) => item.contentHash === session.plan!.base_snapshot_hash,
+  const applyDecisions = useCallback(
+    async (decisions: Decision[]) => {
+      const session = sessionRef.current;
+      const revision = revisionRef.current;
+      if (!session || !revision || !session.plan) return;
+      setBusy("Applying decisions");
+      setError("");
+      try {
+        await withSessionLock(session.sessionId, async () => {
+          const history = await db.sessionRevisions(session.sessionId);
+          const planBase = history.find(
+            (item) => item.contentHash === session.plan!.base_snapshot_hash,
+          );
+          if (!planBase)
+            throw new Error("The revision targeted by this plan is missing");
+          const result = await api.derive(
+            planBase.resume,
+            session.plan!,
+            decisions,
+            session.plan!.base_snapshot_hash,
+          );
+          const revisionId = id("revision");
+          const created = now();
+          const nextRevision: Revision = {
+            revisionId,
+            sessionId: session.sessionId,
+            parentRevisionId: revision.revisionId,
+            resume: result.resume,
+            contentHash: result.content_hash,
+            createdAt: created,
+            note: "Updated edit decisions",
+          };
+          const nextSession = {
+            ...session,
+            activeRevisionId: revisionId,
+            decisions,
+            updatedAt: created,
+            status: "ready" as const,
+          };
+          await db.saveRevision(nextSession, nextRevision, revision.revisionId);
+          setRevision(nextRevision);
+          setSession(nextSession);
+          setSessionHistory((current) => [nextRevision, ...current]);
+          channel?.postMessage({ sessionId: session.sessionId });
+          await refreshSessions();
+        });
+      } catch (value) {
+        setError(
+          value instanceof Error ? value.message : "Could not apply edits",
         );
-        if (!planBase)
-          throw new Error("The revision targeted by this plan is missing");
-        const result = await api.derive(
-          planBase.resume,
-          session.plan!,
-          decisions,
-          session.plan!.base_snapshot_hash,
-        );
-        const revisionId = id("revision");
-        const created = now();
-        const nextRevision: Revision = {
-          revisionId,
-          sessionId: session.sessionId,
-          parentRevisionId: revision.revisionId,
-          resume: result.resume,
-          contentHash: result.content_hash,
-          createdAt: created,
-          note: "Updated edit decisions",
-        };
-        const nextSession = {
-          ...session,
-          activeRevisionId: revisionId,
-          decisions,
-          updatedAt: created,
-          status: "ready" as const,
-        };
-        await db.saveRevision(nextSession, nextRevision, revision.revisionId);
-        setRevision(nextRevision);
-        setSession(nextSession);
-        setSessionHistory((current) => [nextRevision, ...current]);
-        channel?.postMessage({ sessionId: session.sessionId });
-        await refreshSessions();
-      });
-    } catch (value) {
-      setError(
-        value instanceof Error ? value.message : "Could not apply edits",
-      );
-    } finally {
-      setBusy("");
-    }
-  }
-  async function decide(nextDecision: Decision) {
-    if (!session) return;
-    await applyDecisions([
-      ...session.decisions.filter(
-        (item) => item.edit_id !== nextDecision.edit_id,
-      ),
-      nextDecision,
-    ]);
-  }
+      } finally {
+        setBusy("");
+      }
+    },
+    [refreshSessions],
+  );
+  const decide = useCallback(
+    async (nextDecision: Decision) => {
+      const session = sessionRef.current;
+      if (!session) return;
+      await applyDecisions([
+        ...session.decisions.filter(
+          (item) => item.edit_id !== nextDecision.edit_id,
+        ),
+        nextDecision,
+      ]);
+    },
+    [applyDecisions],
+  );
   async function approveSafe() {
     if (!session?.plan) return;
     const safe = session.plan.edits

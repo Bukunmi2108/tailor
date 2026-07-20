@@ -4,31 +4,35 @@ const NAME = "tailor";
 const VERSION = 1;
 type Store = "base_versions" | "sessions" | "resume_revisions" | "app_metadata";
 
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(NAME, VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains("base_versions"))
-        db.createObjectStore("base_versions", { keyPath: "version_id" });
-      if (!db.objectStoreNames.contains("sessions")) {
-        const store = db.createObjectStore("sessions", {
-          keyPath: "sessionId",
-        });
-        store.createIndex("updatedAt", "updatedAt");
-      }
-      if (!db.objectStoreNames.contains("resume_revisions")) {
-        const store = db.createObjectStore("resume_revisions", {
-          keyPath: "revisionId",
-        });
-        store.createIndex("sessionId", "sessionId");
-      }
-      if (!db.objectStoreNames.contains("app_metadata"))
-        db.createObjectStore("app_metadata", { keyPath: "key" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(NAME, VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("base_versions"))
+          db.createObjectStore("base_versions", { keyPath: "version_id" });
+        if (!db.objectStoreNames.contains("sessions")) {
+          const store = db.createObjectStore("sessions", {
+            keyPath: "sessionId",
+          });
+          store.createIndex("updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains("resume_revisions")) {
+          const store = db.createObjectStore("resume_revisions", {
+            keyPath: "revisionId",
+          });
+          store.createIndex("sessionId", "sessionId");
+        }
+        if (!db.objectStoreNames.contains("app_metadata"))
+          db.createObjectStore("app_metadata", { keyPath: "key" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  return dbPromise;
 }
 function done(tx: IDBTransaction) {
   return new Promise<void>((resolve, reject) => {
