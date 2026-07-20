@@ -1,7 +1,7 @@
 import pytest
 
 from app.engine import EditConflict, derive_resume
-from app.models import EditDecision, RewriteText, TailorPlan
+from app.models import AddItem, EditDecision, RewriteText, TailorPlan
 from app.util import content_hash
 
 
@@ -91,3 +91,43 @@ def test_protected_field_is_rejected(resume):
             [EditDecision(edit_id="edit-1", decision="approved")],
             content_hash(resume),
         )
+
+
+def test_add_skill_group_rejects_noncanonical_payload():
+    with pytest.raises(ValueError, match="SkillGroup"):
+        AddItem.model_validate(
+            {
+                "edit_id": "edit-1",
+                "op": "add_item",
+                "target_id": "resume.root",
+                "collection": "skills",
+                "item_type": "skill_group",
+                "item": {"name": "NLP & ML", "skills": ["Entity extraction"]},
+                "rationale": "Match the role",
+                "jd_requirement_ids": [],
+                "evidence_ids": [],
+            }
+        )
+
+
+def test_add_skill_group_accepts_canonical_payload():
+    edit = AddItem.model_validate(
+        {
+            "edit_id": "edit-1",
+            "op": "add_item",
+            "target_id": "resume.root",
+            "collection": "skills",
+            "item_type": "skill_group",
+            "item": {
+                "id": "session.skills.nlp",
+                "label": "NLP & ML",
+                "items": ["Entity extraction"],
+                "visible": True,
+            },
+            "rationale": "Match the role",
+            "jd_requirement_ids": [],
+            "evidence_ids": [],
+        }
+    )
+
+    assert edit.item.id == "session.skills.nlp"

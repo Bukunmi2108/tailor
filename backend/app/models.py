@@ -201,7 +201,21 @@ class AddItem(EditBase):
     collection: str
     position: int | None = Field(default=None, ge=0)
     item_type: Literal["text_atom", "project", "skill_group", "certification", "leadership", "language"]
-    item: dict[str, Any]
+    item: TextAtom | Project | SkillGroup | Certification | Leadership | Language
+
+    @model_validator(mode="after")
+    def item_matches_declared_type(self) -> AddItem:
+        expected_type = {
+            "text_atom": TextAtom,
+            "project": Project,
+            "skill_group": SkillGroup,
+            "certification": Certification,
+            "leadership": Leadership,
+            "language": Language,
+        }[self.item_type]
+        if not isinstance(self.item, expected_type):
+            raise ValueError(f"item must match item_type {self.item_type!r}")
+        return self
 
 
 class ReplaceCollection(EditBase):

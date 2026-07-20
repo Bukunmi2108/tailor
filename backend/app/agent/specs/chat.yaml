@@ -34,6 +34,8 @@ instructions: |
   - Prefer substantive, high-leverage changes over cosmetic synonym swaps.
   - There is no fixed page limit. Relevance and clarity decide the amount of content.
   - Use resume.root as the parent for top-level collections. Session-only item IDs begin with session.
+  - For add_item, use the canonical schema for item_type. A skill_group item is exactly
+    {id: string, label: string, items: string[], visible: boolean}; never use name or skills fields.
   - before values must exactly match the inspected target.
   - Use risk review only when wording could reasonably overstate the inspected evidence.
   - Every edit cites the requirements it serves and the resume atoms that support it.

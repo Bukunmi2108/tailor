@@ -12,7 +12,7 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import { api, download, token } from "./api";
-import { applyServerEvent, connectChat } from "./chat";
+import { applyServerEvent, connectChat, stopAssistantMessage } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
 import { deriveResumeLocal } from "./edit-engine";
 import { ReviewDeck } from "./review-deck";
@@ -352,9 +352,7 @@ function App() {
     onEditMessage: (messageId, text) => {
       const target = messagesRef.current.find((m) => m.id === messageId);
       if (!target || target.role !== "user") return;
-      socketRef.current?.close();
-      socketRef.current = undefined;
-      activeAssistantId.current = undefined;
+      stopGeneration();
       void runTurn(text, {
         historyOverride: target.messageHistoryBefore ?? [],
         truncateBeforeMessageId: messageId,
@@ -368,7 +366,7 @@ function App() {
     options?: { historyOverride?: unknown[]; truncateBeforeMessageId?: string },
   ) {
     const trimmed = text.trim();
-    if (!trimmed || connecting) return;
+    if (!trimmed || activeAssistantId.current) return;
     setError("");
     let currentSession = sessionRef.current;
     let currentRevision = revisionRef.current;
@@ -438,7 +436,7 @@ function App() {
 
     const activeRevision = currentRevision!;
     const chatResume = workingResumeRef.current ?? activeRevision.resume;
-    socketRef.current = connectChat(
+    const socket = connectChat(
       {
         message: trimmed,
         message_history: historyForRequest,
@@ -446,6 +444,7 @@ function App() {
         analysis: activeSession.currentAnalysis ?? null,
       },
       (event) => {
+        if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
         transcript = applyServerEvent(transcript, assistantId, event);
         messagesRef.current = transcript;
         setMessages(transcript);
@@ -467,15 +466,20 @@ function App() {
         }
       },
       () => {
+        if (socketRef.current !== socket) return;
+        socketRef.current = undefined;
         if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
         setConnecting(false);
       },
       (message) => {
+        if (socketRef.current !== socket) return;
+        socketRef.current = undefined;
         if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
         setError(message);
         setConnecting(false);
       },
     );
+    socketRef.current = socket;
   }
 
   function sendMessage() {
@@ -483,29 +487,18 @@ function App() {
   }
 
   function stopGeneration() {
-    socketRef.current?.close();
+    const socket = socketRef.current;
     socketRef.current = undefined;
     const assistantId = activeAssistantId.current;
+    activeAssistantId.current = undefined;
+    setConnecting(false);
     if (assistantId) {
-      const next = messagesRef.current.map((message) =>
-        message.id === assistantId
-          ? {
-              ...message,
-              status: "stopped" as const,
-              parts: (message.parts ?? []).map((part) =>
-                part.type === "reasoning" || part.type === "text"
-                  ? { ...part, status: "complete" as const }
-                  : part,
-              ),
-            }
-          : message,
-      );
+      const next = stopAssistantMessage(messagesRef.current, assistantId);
       messagesRef.current = next;
       setMessages(next);
       updateSession({}, next);
     }
-    activeAssistantId.current = undefined;
-    setConnecting(false);
+    socket?.close();
   }
 
   async function exportArtifact(kind: ExportKind) {

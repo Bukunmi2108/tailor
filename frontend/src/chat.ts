@@ -159,3 +159,19 @@ export function decisionsForPlan(messages: ChatMessage[], planId: string) {
   }
   return undefined;
 }
+
+export function stopAssistantMessage(messages: ChatMessage[], assistantId: string): ChatMessage[] {
+  return messages.map((message) =>
+    message.id === assistantId
+      ? {
+          ...message,
+          status: "stopped" as const,
+          parts: (message.parts ?? []).map((part) =>
+            part.type === "reasoning" || part.type === "text" || part.type === "tool"
+              ? { ...part, status: "complete" as const }
+              : part,
+          ),
+        }
+      : message,
+  );
+}
