@@ -209,11 +209,3 @@ export type BaseVersion = {
   previous_version_id?: string;
   change_note?: string;
 };
-export type Backup = {
-  format: "tailor-backup";
-  version: 1;
-  exportedAt: string;
-  baseVersions: BaseVersion[];
-  sessions: Session[];
-  revisions: Revision[];
-};

@@ -16,10 +16,10 @@ The system separates four concerns:
 
 1. **Canonical content:** a repository-tracked YAML resume with stable identifiers.
 2. **Presentation:** a fixed, versioned HTML/CSS template based on `resume0726.pdf`.
-3. **Session state:** browser-persisted revisions, proposed edits, decisions, and export metadata.
+3. **Session state:** one disposable in-memory workspace containing revisions, proposed edits, decisions, and cover-letter state.
 4. **Model inference:** ModelScope API calls made only by the backend.
 
-The agent never edits files directly. It returns typed proposals. The backend validates those proposals and derives a working snapshot only from approved decisions supplied by the browser. The repository YAML changes only through a deliberate human edit in the local repository; the in-application base-promotion flow creates a browser-local base version and downloads replacement YAML.
+The agent never edits files directly. It returns typed proposals. The backend validates those proposals and derives a working snapshot only from approved decisions supplied by the browser. The repository YAML changes only through a deliberate human edit in the local repository.
 
 The application accepts the current three-page resume as its baseline. Page count is informational and never blocks export.
 
@@ -32,10 +32,10 @@ Build a dependable resume-tailoring workflow that:
 - makes multiple rounds of revision safe and recoverable;
 - provides a fast browser preview without repeatedly generating PDFs;
 - produces a matching cover letter grounded in resume evidence;
-- persists every meaningful session revision;
+- tracks every meaningful revision during the active tab session;
 - works with a Vercel-hosted React frontend and a FastAPI backend on Hugging Face Spaces;
 - uses a ModelScope API token without exposing it to the browser;
-- does not require a Git push for normal use or session persistence.
+- does not require a Git push for normal use.
 
 ## 3. Product Principles and Invariants
 
@@ -55,9 +55,9 @@ No agent proposal affects the working resume until the user approves it or repla
 
 Approving an edit for a job application does not update the canonical resume. Updating the canonical resume is a separate, explicit action with its own preview and confirmation.
 
-### 3.5 Persistent-revision invariant
+### 3.5 Ephemeral-session invariant
 
-The model's conversation state is never treated as durable memory. The browser stores session snapshots and change metadata in IndexedDB. The current working resume can be reconstructed after a browser refresh, backend restart, or later return from the same browser profile.
+The model's conversation state is never treated as durable memory. The frontend holds the active conversation, resume snapshots, and change metadata in memory for the lifetime of the tab. Starting a new session, refreshing, or closing the tab intentionally discards that state.
 
 ### 3.6 Evidence invariant
 
@@ -78,13 +78,10 @@ PDF generation occurs only when explicitly requested or when a final-layout conf
 - Propose typed, evidence-linked resume edits.
 - Approve, reject, or modify individual edits.
 - Support multiple agent passes and human revisions in one session.
-- Autosave session revisions.
-- Restore, compare, and revert revisions.
+- Track accepted revisions during the active tab session.
 - Render the working resume in a browser preview.
 - Export the selected revision to PDF.
 - Generate and revise an evidence-linked cover letter.
-- List and reopen prior sessions.
-- Explicitly promote selected session changes into a new base-resume version.
 
 ### 4.2 Non-goals for version 1
 
@@ -125,9 +122,9 @@ The artifacts have distinct roles:
 | Artifact | Purpose | Runtime mutability |
 |---|---|---|
 | `backend/canon/reference/resume0726.pdf` | Original content and visual reference | Never modified by the application |
-| `backend/canon/resume.yaml` | Repository canonical seed | Modified only by a deliberate human edit in the local repository; in-app promotion downloads replacement YAML |
+| `backend/canon/resume.yaml` | Repository canonical seed | Modified only by a deliberate human edit in the local repository |
 | Resume HTML/CSS/fonts | Fixed presentation system | Never modified by an agent or session |
-| Browser IndexedDB | Plans, decisions, revisions, cover letters, and export metadata | Updated during normal use |
+| Frontend memory | Active plans, decisions, revisions, and cover letter | Discarded on new session, refresh, or tab close |
 
 The starting PDF is three A4 pages and uses Times New Roman with limited Arial usage. The public repository uses Tinos and Arimo as Apache 2.0 metric-compatible substitutes rather than redistributing Microsoft font files. Three pages are accepted as the initial layout. Tailored drafts may remain three pages or grow or shrink when content changes. The UI reports the resulting page estimate or export page count but does not block export.
 
@@ -138,7 +135,7 @@ The starting PDF is three A4 pages and uses Times New Roman with limited Arial u
 │ Vercel                                                     │
 │ React + Vite + TypeScript                                  │
 │                                                            │
-│ JD input · analysis · edit decisions · revision history    │
+│ JD input · analysis · edit decisions · active revision     │
 │ browser resume preview · cover letter · export controls    │
 └──────────────────────────┬──────────────────────────────────┘
                            │ HTTPS JSON API
@@ -161,7 +158,7 @@ The starting PDF is three A4 pages and uses Times New Roman with limited Arial u
 └──────────────────────────┘
 ```
 
-The Vercel application never receives the ModelScope token. All model calls originate from the Hugging Face Space. IndexedDB in the user's browser is the authoritative session store; the backend does not retain session state between requests.
+The Vercel application never receives the ModelScope token. All model calls originate from the Hugging Face Space. The open frontend tab owns the disposable active session; the backend does not retain session state between requests.
 
 ## 7. Deployment Architecture
 
@@ -224,20 +221,11 @@ Required backend configuration:
 
 The ModelScope token is configured through Hugging Face Space Secrets and is never committed to Git.
 
-### 7.3 Stateless backend and browser persistence
+### 7.3 Stateless backend and ephemeral frontend state
 
 The backend does not require durable disk. Each request includes the exact validated inputs needed for analysis, planning, preview rendering, or export. Temporary files created for PDF generation are deleted after the response completes.
 
-IndexedDB in the stable production frontend origin stores:
-
-- job descriptions and corrected analyses;
-- plans and decision sets;
-- complete resume revision snapshots;
-- cover-letter revisions;
-- base versions promoted inside the application;
-- export metadata.
-
-PDFs are returned directly to the browser for download and are not archived by the backend. The frontend supports JSON export and import of application state for manual backup and migration. Clearing browser data, using a different browser profile, or changing the frontend origin loses locally stored state unless a backup was exported.
+The frontend holds the active job description, analysis, plan, decisions, resume revisions, and cover letter in React memory. PDFs are returned directly to the browser for download and are not archived by the backend. Starting a new session, refreshing, closing the tab, or navigating to a fresh deployment discards the workspace by design.
 
 ### 7.4 Access control
 
@@ -245,7 +233,7 @@ Although the product is single-user and stateless, its ModelScope-backed routes 
 
 The backend stores an Argon2id passphrase hash and an independent token-signing secret in Hugging Face Space Secrets. The frontend displays a custom passphrase dialog and sends the passphrase once over HTTPS to `POST /api/auth/login`. After successful constant-time verification, the backend returns a short-lived signed bearer token.
 
-The frontend stores the token in `sessionStorage`, not IndexedDB or `localStorage`, and sends it as an `Authorization: Bearer` header on protected requests. Closing the tab, logging out, or token expiry requires authentication again. The reusable passphrase is never stored by the frontend after the login request completes.
+The frontend stores the token in `sessionStorage`, not durable application storage, and sends it as an `Authorization: Bearer` header on protected requests. Closing the tab, logging out, or token expiry requires authentication again. The reusable passphrase is never stored by the frontend after the login request completes.
 
 The backend remains stateless: it verifies the token signature and expiry without a session database. Login attempts use an in-memory, best-effort rate limiter, authentication failures are generic, allowed frontend origins are explicit, and authorization headers are never logged. The limiter may reset when the stateless Space restarts, which is acceptable for the single-user v1 deployment. Health, readiness, login, and an allowlisted non-sensitive public-configuration route are public; every other route requires authentication.
 
@@ -335,13 +323,13 @@ The production strategy is:
 
 Native schema mode may be enabled later as an optimization for a specific model only after a live compatibility test. It does not replace backend Pydantic validation.
 
-The backend never applies raw model prose as an edit plan. Pydantic AI validates the typed response, and the edit engine enforces target existence, exact before values, protected fields, operation shape, and snapshot identity when the human approves proposals. The frontend persists a plan in IndexedDB only after typed generation succeeds.
+The backend never applies raw model prose as an edit plan. Pydantic AI validates the typed response, and the edit engine enforces target existence, exact before values, protected fields, operation shape, and snapshot identity when the human approves proposals. The frontend admits a plan into the active in-memory session only after typed generation succeeds.
 
 ## 9. Canonical Resume Model
 
 ### 9.1 Canonical YAML
 
-`backend/canon/resume.yaml` is the repository-tracked seed and portable representation of the base resume. Every addressable content item has a permanent stable ID. In the deployed application, IndexedDB identifies the current browser-local operational base version because writing into the Space checkout would not provide durable repository history.
+`backend/canon/resume.yaml` is the repository-tracked operational base resume. Every addressable content item has a permanent stable ID. The deployed application reads this base but never writes into the Space checkout.
 
 Representative structure:
 
@@ -406,12 +394,12 @@ The final schema must represent all content visible in the supplied PDF, includi
 - Text may change without changing its ID when it remains the same semantic item.
 - Deleted IDs are retired and never reused.
 - New canonical items receive new IDs.
-- Session-only additions receive session-scoped IDs and do not become canonical IDs unless promoted into a new base version.
+- Session-only additions receive session-scoped IDs and do not become canonical IDs unless a human later adds them to repository YAML.
 - Base content IDs come from validated repository YAML. The frontend generates session, plan, decision-set, revision, cover-letter, and export-record IDs. The backend generates or normalizes IDs for validated agent-proposed operations and session-only content; IDs supplied by raw model output are never trusted directly.
 
 ### 9.3 Base versions
 
-The repository YAML seeds the first base version, while IndexedDB retains immutable browser-local versions used by sessions and identifies the current operational base.
+The repository YAML is the operational base for every new in-memory session.
 
 ```text
 BaseResumeVersion
@@ -423,19 +411,14 @@ BaseResumeVersion
 ├── created_at
 ├── previous_version_id
 ├── change_note
-└── source: repository_import | direct_edit | promoted_session_change
+└── source: repository_import | direct_edit
 ```
 
-At application startup, the backend validates `resume.yaml` and exposes the validated repository base plus its hash. The frontend registers that seed in IndexedDB when it is not already present. A newly deployed repository seed does not silently replace existing sessions or a newer browser-local base created in the application.
+At application startup, the backend validates `resume.yaml` and exposes the validated repository base plus its hash. A session clones that snapshot into memory when the first message is sent. A deployment cannot alter an already-open tab, while refreshed and new sessions use the newly deployed base.
 
 ### 9.4 Updating the base
 
-Two supported paths exist:
-
-1. A human directly edits `backend/canon/resume.yaml` in the local repository; after deployment, the backend validates and exposes that repository seed and the frontend registers it as a base version.
-2. A human selects one or more session changes, previews their effect on the base, and explicitly confirms promotion.
-
-The second path writes a new browser-local base version to IndexedDB only after confirmation. It also downloads a YAML representation that can later replace `backend/canon/resume.yaml` in the local repository. The deployed backend does not attempt to commit or push Git changes. A local Git commit or push remains optional and outside normal session saving.
+The supported path is a deliberate human edit to `backend/canon/resume.yaml` in the local repository. After deployment, the backend validates and exposes that repository seed. The deployed backend does not attempt to commit or push Git changes.
 
 ## 10. Fixed Template and Rendering
 
@@ -596,13 +579,13 @@ ResumeRevision
 ├── parent_revision_id
 ├── resume_snapshot
 ├── content_hash
-├── source: base | decisions | human_edit | agent_pass | restore
+├── source: base | decisions | human_edit | agent_pass
 ├── change_summary
 ├── created_at
 └── created_by: system | agent | human
 ```
 
-Complete snapshots are preferred because a resume is small and snapshots make restoration and export reliable. Edit metadata is retained alongside snapshots for explanation and diffing.
+Complete snapshots are preferred because a resume is small and snapshots make subsequent agent passes and export reliable. Edit metadata is retained in memory alongside snapshots for explanation and diffing.
 
 ### 11.3 Multiple agent passes
 
@@ -613,7 +596,7 @@ Revision 0: frozen base
 Revision 1: first approved plan
 Revision 2: human-modified profile
 Revision 3: second agent pass against Revision 2
-Revision 4: restored Revision 2 with selected new edits
+Revision 4: third agent pass against Revision 3
 ```
 
 The request sent to the agent contains:
@@ -627,26 +610,23 @@ The request sent to the agent contains:
 
 Every proposed edit includes an expected current value, item hash, collection hash, or anchor appropriate to its operation. Stale proposals fail validation instead of being silently applied.
 
-### 11.4 Autosave
+### 11.4 In-memory updates
 
-Decision state autosaves after:
+Decision state updates after:
 
 - approval or rejection;
 - human modification;
 - bulk decision;
 
-A new resume revision snapshot is created only when the derived content hash changes. A rejection or decision-only change with an unchanged working resume updates the decision set without creating a duplicate resume snapshot. Restoring history updates the active revision pointer or creates an explicit branch revision according to the restore action.
+A new resume revision snapshot is created only when the derived content hash changes. A rejection or decision-only change with an unchanged working resume updates the decision set without creating a duplicate resume snapshot.
 
-Successful agent passes save plans and run metadata, cover-letter edits save cover-letter revisions, and successful exports save export records. These records do not create resume revisions unless resume content also changed.
+Successful agent passes update plans and run metadata in memory. Cover-letter edits update the active cover letter. These changes do not create resume revisions unless resume content also changed.
 
-Rapid UI actions may be debounced briefly, but the interface exposes `Saving`, `Saved`, and `Save failed` states. Local compare-and-swap occurs inside an IndexedDB transaction using the expected active revision ID. `BroadcastChannel` notifies other tabs, and Web Locks are used where available to serialize session writes. The backend can verify that a plan matches the supplied snapshot hash, but it cannot determine the browser's current local revision.
+Rapid UI actions update the active in-memory workspace immediately. Asynchronous server validation is generation-checked so an older response cannot replace a newer decision state. Each tab is an independent workspace. The backend verifies that a plan matches the supplied snapshot hash but does not own session state.
 
-### 11.5 Undo, restore, and branching
+### 11.5 Revision lifetime
 
-- Undo selects or creates a revision derived from an earlier snapshot.
-- Restoring history never deletes newer revisions.
-- A new agent pass after restoring an old revision creates a new branch through `parent_revision_id`.
-- The UI may initially show this as a linear history while preserving parent links for later branch visualization.
+Revision snapshots support multiple agent passes during the active session. They are internal working state, not durable history, and are discarded with the workspace.
 
 ## 12. Job Description Analysis
 
@@ -761,7 +741,7 @@ New session items:
 - identify all source evidence IDs;
 - remain attached to a schema-valid parent;
 - pass the same protected-field, number, technology, and ownership checks as rewrites;
-- do not enter the canonical resume without separate human-confirmed promotion.
+- do not enter the canonical resume without a separate human edit to repository YAML.
 
 Evidence combination respects ownership boundaries. Facts from compatible items within the same role or project may be combined. Metrics, tools, responsibilities, and outcomes cannot be transferred between unrelated employers or projects. A profile may summarize evidence across roles because it is explicitly a cross-resume summary.
 
@@ -796,7 +776,7 @@ The function does not mutate its input. Recomputing from the same frozen inputs 
 
 Human-modified values pass through the same typed operation and protected-field application path as agent text. The modification and approval decision are recorded.
 
-Decision updates include an expected local session revision. Before persisting the returned snapshot, the frontend performs an IndexedDB transactional compare-and-swap. A stale tab aborts its local write, reloads the active revision, and may resubmit. The backend separately rejects a plan whose expected snapshot hash does not match the snapshot supplied in the request.
+Decision updates include the plan's expected snapshot hash. The frontend ignores superseded validation responses, and the backend rejects a plan whose expected snapshot hash does not match the snapshot supplied in the request. Separate tabs do not synchronize.
 
 ## 15. Agent Workflow
 
@@ -895,11 +875,10 @@ Login verifies the submitted passphrase and returns a short-lived signed token. 
 
 ```text
 GET    /api/base/current
-POST   /api/base/promotions/preview
 POST   /api/base/serialize-yaml
 ```
 
-The frontend stores promoted base versions in IndexedDB. The serialization endpoint validates a supplied base snapshot and returns portable YAML for download; it does not write into the deployed repository.
+The deployed application does not promote session changes into a durable base. Canonical changes are made deliberately in the repository YAML.
 
 ### 17.3 Analysis and plans
 
@@ -908,7 +887,7 @@ POST   /api/agent/analyze
 POST   /api/agent/plan
 ```
 
-The browser supplies the job description, current resume revision, corrected analysis, relevant prior decisions, and revision instruction required by each operation. The backend returns a validated result but does not retain it. The frontend saves successful results in IndexedDB.
+The browser supplies the job description, current resume revision, corrected analysis, relevant prior decisions, and revision instruction required by each operation. The backend returns a validated result but does not retain it. The frontend keeps successful results in the active tab's memory.
 
 Long provider calls may initially remain open HTTP requests. A job resource is introduced only if deployment timeouts require it. Any temporary job state is best-effort and may disappear on backend restart; the active browser revision remains safe.
 
@@ -920,7 +899,7 @@ POST   /api/render/resume-preview
 POST   /api/render/cover-preview
 ```
 
-The derive request contains the exact plan-base snapshot, plan, complete decision set, and expected revision hash. The backend returns a validated new snapshot, content hash, and warnings. The browser assigns the local revision relationship and persists it only after the response succeeds.
+The derive request contains the exact plan-base snapshot, plan, complete decision set, and expected revision hash. The backend returns a validated new snapshot, content hash, and warnings. The browser assigns the in-memory revision relationship only after the response succeeds.
 
 Preview requests contain the exact selected snapshot and pinned template version and return escaped HTML rendered through that immutable template. Preview HTML is not stored server-side.
 
@@ -978,26 +957,17 @@ Bulk actions:
 
 Bulk approval remains visibly reviewable and does not include `review` edits.
 
-### 18.4 Revision controls
+### 18.4 Active-workspace controls
 
 - current revision indicator;
-- save status;
-- revision history drawer;
-- compare selected revisions;
-- restore revision;
 - request another agent pass against the active revision;
 - enter a human revision instruction.
 
-### 18.5 History and local-data controls
+### 18.5 Session reset
 
-- active and archived session views;
-- archive and restore actions;
-- permanent session deletion with confirmation;
-- export one session as versioned JSON;
-- export all application data as versioned JSON;
-- validate and import a JSON backup;
-- display approximate browser storage usage;
-- clear all local Tailor data behind a stronger confirmation.
+- a plus action starts a new blank session;
+- confirmation clearly states that the current work will be permanently discarded;
+- reset stops active generation and clears revisions, review state, conversation, analysis, and cover letter.
 
 ### 18.6 Cover Letter tab
 
@@ -1021,48 +991,19 @@ Bulk approval remains visibly reviewable and does not include `review` edits.
 
 The preview updates from HTML after accepted revision changes. It does not call WeasyPrint on every decision.
 
-## 19. Browser Persistence Model
+## 19. In-Memory Workspace Model
 
-IndexedDB object stores:
+The frontend owns exactly one active workspace. React state and in-memory maps hold its session metadata, conversation, frozen starting revision, accepted resume revisions, review snapshots, analysis, decisions, and cover letter.
 
-```text
-base_versions
-sessions
-jd_analyses
-agent_runs
-plans
-decision_sets
-resume_revisions
-cover_letters
-cover_letter_revisions
-export_records
-app_metadata
-```
+Important relationships remain explicit while the tab is open:
 
-Important relationships:
-
-- a session references one frozen base version and template version;
-- a plan references the exact resume revision it targeted;
-- a decision set references one plan and one expected revision;
+- a session references one frozen repository base and template version;
+- a plan references the exact resume snapshot hash it targeted;
+- a decision set references one plan;
 - a resume revision references its parent revision;
-- a cover letter references the exact resume revision used as evidence;
-- an export record references exact resume and cover-letter revisions.
+- a cover letter cites resume evidence IDs.
 
-IndexedDB schema upgrades are versioned and transactional. Validated domain objects are serialized as JSON-compatible records. Searchable metadata such as company, role, updated date, status, model ID, and hashes receives IndexedDB indexes.
-
-The application provides:
-
-- export of all or selected session state to a versioned JSON backup;
-- validation before importing a backup;
-- collision handling for existing IDs;
-- a clear warning that clearing site data deletes unexported history;
-- startup detection and reporting of IndexedDB availability or quota errors.
-
-Browser-local sessions have no automatic expiry. They remain until the user archives or permanently deletes them. Archiving hides a session from the default history view without removing its data. Permanent session deletion removes its JD, analysis, plans, decisions, resume revisions, cover-letter revisions, agent-run metadata, and export metadata after confirmation.
-
-A separate confirmed clear-all action removes sessions, browser-local base versions, revisions, export records, and application preferences. It does not affect the repository base resume, PDFs already downloaded to the filesystem, or JSON backups already downloaded by the user.
-
-Backups never contain the reusable passphrase, bearer token, ModelScope token, or backend signing secret. Failed agent runs retain an error category and non-secret model metadata rather than unnecessary full provider payloads.
+There is no IndexedDB, localStorage, backend database, session archive, or application-state backup. The plus action asks for confirmation and then permanently clears the active workspace. Refreshing or closing the tab has the same data-loss consequence. Downloaded PDFs are independent filesystem artifacts and are not removed.
 
 ## 20. Export Delivery
 
@@ -1084,7 +1025,7 @@ The browser stores an export record containing:
 - content hash;
 - creation time.
 
-The actual downloaded PDF is durable only in the user's chosen download location. If it is lost, the browser can regenerate it while the referenced revision remains in IndexedDB. A JSON session backup contains revision data and export metadata, not PDF bytes.
+The actual downloaded PDF is durable only in the user's chosen download location. It can be regenerated only while the source workspace remains open; after reset or refresh, the user must recreate the tailoring session.
 
 ## 21. Security and Privacy
 
@@ -1113,7 +1054,7 @@ Job descriptions, model output, and human edits are untrusted strings.
 
 ### 21.3 Personal data
 
-The product sends resume content and job descriptions to ModelScope for inference. The UI should disclose this. Browser-local session deletion and clear-all controls must be supported. Downloaded PDFs and JSON backups remain under the user's filesystem control. Raw prompts and responses should not be logged by default beyond what is necessary for local debugging and audit.
+The product sends resume content and job descriptions to ModelScope for inference. The UI should disclose this. The reset control discards the active in-memory workspace; downloaded PDFs remain under the user's filesystem control. Raw prompts and responses should not be logged by default beyond what is necessary for local debugging and audit.
 
 ## 22. Reliability and Failure Recovery
 
@@ -1122,13 +1063,12 @@ The product sends resume content and job descriptions to ModelScope for inferenc
 | ModelScope timeout | Preserve active revision, record failed run, allow retry |
 | Invalid structured response | Validate, bounded repair retry, then show failure |
 | Quota exhausted | Show provider-specific message without losing work |
-| Backend restart | Browser resubmits required state; IndexedDB session remains available |
-| Browser refresh | Reload active session and saved revision |
-| Stale decision request | Return conflict and require reload |
+| Backend restart | Open tab retains state and can retry after the backend returns |
+| Browser refresh or tab close | Active work is intentionally discarded |
+| Superseded decision response | Ignore it using the validation generation check |
 | Preview render failure | Keep editor usable and expose retry |
 | PDF export failure | Preserve revision, record failure, allow retry |
-| Lost downloaded PDF | Regenerate it from the retained browser revision |
-| IndexedDB unavailable or cleared | Warn clearly; support versioned JSON export/import backups |
+| Lost downloaded PDF | Regenerate it only while the active workspace remains open |
 | Canon changed | New sessions use new base; old sessions retain frozen base |
 | Template changed | New template version; existing sessions remain pinned |
 
@@ -1154,10 +1094,8 @@ The product sends resume content and job descriptions to ModelScope for inferenc
 - session additions receive stable IDs;
 - protected fields cannot be changed through generic rewrite operations;
 - human modifications are validated;
-- restoration reproduces the stored snapshot hash.
-- IndexedDB compare-and-swap rejects a stale active revision;
-- cross-tab notifications reload newer state;
-- concurrent session writes serialize through Web Locks where supported.
+- accepted decisions produce the expected snapshot hash;
+- superseded asynchronous validation responses cannot overwrite newer decisions.
 
 ### 23.3 Agent architecture
 
@@ -1200,14 +1138,13 @@ Playwright scenarios:
 3. Generate a plan.
 4. Approve, reject, and modify different edits.
 5. Confirm browser preview updates.
-6. Refresh and confirm the revision restores.
-7. Request another agent pass against the current revision.
-8. Restore an earlier revision.
-9. Generate a cover letter.
-10. Export resume and cover letter.
-11. Reopen the session and regenerate a PDF from the recorded revision, verifying the revision hash, template version, extracted content, and expected page behavior.
+6. Request another agent pass against the current revision.
+7. Generate a cover letter.
+8. Export resume and cover letter.
+9. Start a new session and confirm the prior workspace is cleared.
+10. Refresh and confirm the application returns to a blank workspace.
 
-Deployment smoke tests verify direct Vercel-to-Space requests, CORS behavior, IndexedDB behavior on the stable production origin, secret presence, provider availability, and export dependencies.
+Deployment smoke tests verify direct Vercel-to-Space requests, CORS behavior, ephemeral reset behavior, secret presence, provider availability, and export dependencies.
 
 ## 24. Observability
 
@@ -1241,7 +1178,7 @@ Useful metrics:
 - provider latency;
 - preview latency;
 - export latency;
-- IndexedDB save, import, and quota failures.
+- workspace resets;
 
 ## 25. Build Sequence
 
@@ -1253,14 +1190,14 @@ Deliverables:
 - confirm the Tinos and Arimo files, variants, checksums, and Apache 2.0 attribution;
 - confirm ModelScope endpoint and candidate model IDs with the user's token configured outside Git;
 - test structured output with representative schemas;
-- confirm IndexedDB support and backup-file behavior on the production frontend origin;
+- confirm refresh and reset intentionally clear the frontend workspace;
 - confirm Vercel-to-Space authentication and routing approach;
 - benchmark browser HTML render and WeasyPrint export.
 
 Exit criteria:
 
 - at least one ModelScope model reliably returns valid test structures;
-- browser session data remains available across Space restarts;
+- an open browser tab remains usable across Space restarts after retry;
 - the Vercel deployment can securely call the backend;
 - WeasyPrint works in the Docker Space image.
 
@@ -1282,25 +1219,21 @@ Exit criteria:
 - the preview preserves the approved design and structure;
 - PDF export is visually accepted as the template baseline.
 
-### Phase 2 — Browser session and revision core
+### Phase 2 — In-memory session and revision core
 
 Deliverables:
 
-- IndexedDB base versions;
-- sessions;
-- complete revision snapshots;
-- autosave;
-- restore and revision comparison;
-- optimistic concurrency;
-- IndexedDB transactional compare-and-swap, BroadcastChannel synchronization, and Web Locks integration;
-- JSON backup export and import;
-- IndexedDB schema-upgrade verification.
+- one disposable active session;
+- complete in-memory revision snapshots;
+- deterministic decision derivation;
+- generation checks for asynchronous validation;
+- confirmed new-session reset.
 
 Exit criteria:
 
-- revisions survive page reloads and backend restarts in the same browser profile;
-- restoring a revision reproduces its content hash;
-- stale updates cannot overwrite newer work.
+- revisions remain coherent through multiple passes in one open tab;
+- a new session clears all prior workspace state;
+- superseded validation cannot overwrite newer work.
 
 ### Phase 3 — Pydantic AI agents and typed edit engine
 
@@ -1327,7 +1260,7 @@ Deliverables:
 
 - provider adapter;
 - JD analysis call;
-- corrected analysis saved in IndexedDB;
+- corrected analysis retained in the active session;
 - edit-plan call;
 - structured-output retry policy;
 - model evaluation fixtures;
@@ -1349,50 +1282,42 @@ Deliverables:
 - word-diff edit checklist;
 - decision controls;
 - browser preview;
-- revision history;
-- save state;
+- active revision state;
 - deployment through Vercel.
 
 Exit criteria:
 
 - the full tailoring workflow works across deployed frontend and backend;
 - browser preview updates without PDF generation;
-- refresh restores current work;
+- refresh returns to a blank workspace;
 - mobile layout remains usable.
 
-### Phase 6 — PDF export and local history
+### Phase 6 — PDF export
 
 Deliverables:
 
 - explicit WeasyPrint export;
-- browser-local export metadata manifest;
 - direct PDF download;
 - authoritative page count;
-- browser-local session history and deterministic regeneration.
 
 Exit criteria:
 
-- exports are tied to exact revisions;
+- exports use the exact active revision;
 - exports complete without backend retention;
-- lost downloads can be regenerated from retained revisions;
 - reference-template visual tests pass.
 
-### Phase 7 — Cover letters and base promotion
+### Phase 7 — Cover letters
 
 Deliverables:
 
 - evidence-linked cover-letter generation;
 - paragraph revisions;
 - cover preview and PDF export;
-- preview and confirmation for promoting session changes to the base;
-- new base-version registration.
 
 Exit criteria:
 
 - cover letters cite existing evidence IDs;
-- cover revisions restore correctly;
-- base promotion cannot occur through ordinary session approval;
-- existing sessions remain unchanged after a new base version.
+- cover letters remain editable and exportable during the active session.
 
 ## 26. Key Risks and Mitigations
 
@@ -1403,14 +1328,13 @@ Exit criteria:
 | ModelScope quota exhaustion | Explicit error state, retries, model configuration, no loss of session work |
 | Browser/PDF pagination differences | Shared template and CSS, approximate browser labeling, authoritative export count |
 | Template drift | Versioned frozen template, no agent markup, visual regression tests |
-| Session loss on Space restart | Stateless backend; authoritative session state remains in browser IndexedDB |
-| Browser data is cleared | Versioned JSON backup export/import and explicit local-only warning |
+| Accidental refresh or tab close | Explicitly disclose that the workspace is ephemeral; export final artifacts before leaving |
 | Token exposure | Backend-only Space secret; no Vite secret variables |
 | Public backend abuse | Passphrase login, short-lived signed tokens, route authorization, origin checks, and login rate limiting |
 | Stale edits across revisions | Plan-base revision IDs, exact expected values, optimistic concurrency |
-| Base changes alter old sessions | Immutable base snapshots pinned per session |
+| Base changes during an open session | The active session keeps its cloned starting snapshot |
 | Human modification bypasses checks | Run human text through the validation and warning pipeline |
-| Historical export layout changes after a renderer upgrade | Retain exact revision snapshots and immutable templates, record the renderer version, and disclose that a lost PDF may be semantically regenerated but not byte-identical after an approved renderer upgrade |
+| Export layout changes after a renderer upgrade | Keep templates versioned in the repository and export important artifacts before discarding the workspace |
 | Font or renderer differences | Pin fonts, dependencies, and renderer; run visual regression tests |
 
 ## 27. Architecture Decisions
@@ -1423,10 +1347,10 @@ The following decisions are accepted for version 1:
 4. Browser HTML is the live preview path.
 5. WeasyPrint runs only for explicit export or explicit final-layout confirmation.
 6. Every session uses the same fixed resume design and structural template.
-7. Session revisions are stored in browser IndexedDB and never depend on model memory or backend disk.
-8. Complete resume snapshots are stored for accepted revisions.
+7. Session revisions exist only in memory for the lifetime of the open frontend tab.
+8. Complete resume snapshots are retained in memory for accepted revisions.
 9. Canonical updates require a distinct human-confirmed operation.
-10. Git push is not required for application operation or session persistence.
+10. Git push is not required for application operation; canonical YAML changes remain a separate repository action.
 11. ModelScope is the inference provider.
 12. The initial model chain is Qwen3.5-397B-A17B, Qwen3.5-35B-A3B, then the independent Nemotron3 Nano llama.cpp Space.
 13. Model IDs remain configurable and the two ModelScope candidates are compared through tailoring evaluations.
@@ -1435,7 +1359,7 @@ The following decisions are accepted for version 1:
 16. Vercel hosts the frontend and a Docker Hugging Face Space hosts the backend.
 17. The backend is stateless; no durable Space volume or backend database is required for version 1.
 18. PDFs are returned directly for download and are not archived by the backend.
-19. Versioned JSON export/import provides manual backup and migration of browser-local history.
+19. Tailor intentionally provides no application-state persistence, history archive, or backup/import flow in version 1.
 20. Authentication uses a custom passphrase dialog, an Argon2id hash in backend secrets, and a short-lived signed bearer token stored in browser `sessionStorage`.
 21. The backend verifies tokens statelessly; no Vercel Function or authentication database is required.
 22. The Hugging Face Docker Space is public and protected by Tailor's application authentication; repository-tracked source and canonical assets are accepted as publicly readable.
@@ -1443,41 +1367,40 @@ The following decisions are accepted for version 1:
 24. Content ordering is adaptive: the agent may propose reordering schema-defined sections and items, selecting or omitting content, and adopting evidence-supported JD terminology while the visual template remains fixed.
 25. Truthfulness, evidence linkage, protected facts, schema validity, and explicit approval are the ordering and ATS-optimization boundaries; chronology and base order are not hard constraints.
 26. The agent may propose new session-only bullets, summaries, taglines, project descriptions, and skill placements when every factual component is supported by cited evidence.
-27. Session-only content may split, combine, or reframe compatible evidence and adopt supported ATS terminology, but cannot transfer facts across ownership boundaries or enter the canonical resume without separate promotion.
-28. Browser-local sessions are retained indefinitely without automatic expiry until the user archives or permanently deletes them.
-29. Session deletion removes related IndexedDB records but cannot remove PDFs or JSON backups already downloaded to the filesystem.
-30. Tailor provides archive, restore, per-session export, full-data export/import, storage-usage reporting, and a separately confirmed clear-all action.
+27. Session-only content may split, combine, or reframe compatible evidence and adopt supported ATS terminology, but cannot transfer facts across ownership boundaries or enter the canonical resume without a separate repository edit.
+28. There is exactly one disposable active workspace per tab.
+29. Starting a new session permanently clears the current in-memory workspace after confirmation and cannot remove already downloaded PDFs.
+30. Refreshing or closing the tab intentionally discards the workspace.
 31. Template versions are immutable directories retained in the repository; historical sessions never silently fall forward to a newer template.
-32. IndexedDB transactional compare-and-swap owns local concurrency, with BroadcastChannel and Web Locks coordinating tabs; the stateless backend validates supplied snapshot hashes only.
+32. Tabs are independent; generation checks prevent stale asynchronous validation from overwriting newer in-tab decisions, while the backend validates supplied snapshot hashes.
 33. Base IDs come from canonical YAML, browser-domain record IDs come from the frontend, and agent-operation IDs are generated or normalized by the backend rather than trusted from model output.
 34. JD requirements carry stable analysis-scoped IDs used by edit and cover-letter evidence references.
-35. Export records contain browser-local metadata and a download filename, not a server storage location or archived PDF.
+35. Export responses include download metadata but neither frontend nor backend archives the PDF.
 
 ## 28. Decision Review Status
 
-Questions 1 through 9 are resolved in Section 27. No product-architecture decision from the review remains open. Phase 0 still contains verification work, including live model evaluation, deployment checks, font checksums, visual acceptance, and IndexedDB backup testing, but these are validation gates rather than unresolved product choices.
+Questions 1 through 9 are resolved in Section 27. No product-architecture decision from the review remains open. Phase 0 still contains verification work, including live model evaluation, deployment checks, font checksums, and visual acceptance, but these are validation gates rather than unresolved product choices.
 
 ## 29. Definition of MVP Complete
 
 The MVP is complete when the deployed application can:
 
 1. Load the validated base resume derived from `resume0726.pdf`.
-2. Create a browser-persisted session pinned to a base and template version.
+2. Create an in-memory session pinned to a base and template version.
 3. Accept and analyze a pasted job description through ModelScope.
 4. Let the user correct the analysis.
 5. Generate valid, evidence-linked edit proposals against the active revision.
 6. Let the user approve, reject, and modify proposals individually.
-7. Persist complete revision snapshots across page reloads and backend restarts in the same browser profile.
+7. Track complete revision snapshots through multiple passes in the active tab.
 8. Request another agent pass against the latest selected revision.
-9. Restore and compare earlier revisions.
-10. Render every revision through the same fixed browser template.
-11. Export an exact selected revision to PDF on demand.
-12. Reopen the session and retrieve its revision and export history.
+9. Render the active revision through the fixed browser template.
+10. Export the exact active revision to PDF on demand.
+11. Clearly warn before permanently discarding work through the new-session action.
+12. Return to a blank workspace after reset or refresh.
 13. Keep the ModelScope token out of the frontend, repository, logs, and artifacts.
-14. Preserve user work through provider failures, quota errors, and stale client requests.
-15. Export and import a versioned JSON backup of browser-local session history.
+14. Preserve active-tab work through provider failures, quota errors, and stale client responses.
 
-Cover-letter generation and base promotion are the next complete milestone if they are not included in the first MVP release.
+Cover-letter generation is the next complete milestone if it is not included in the first MVP release.
 
 ## 30. Current Platform References
 

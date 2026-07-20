@@ -44,8 +44,6 @@ button:disabled { cursor: not-allowed; opacity: .44; }
 .icon-button:hover { background: var(--surface-muted); color: var(--text); }
 .icon-button:active, button:active { transform: translateY(1px) scale(.98); }
 .icon-button svg { width: 18px; height: 18px; }
-.save-state { color: var(--muted); font: 10px var(--font-mono); text-transform: capitalize; }
-.save-state.failed { color: var(--danger); }
 
 .workspace { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(430px, 43%) minmax(0, 57%); }
 .control-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: rgb(251 251 247 / .92); border-right: 1px solid var(--line); }
@@ -145,7 +143,6 @@ button svg { width: 16px; height: 16px; }
 .message-edit__actions button { min-height: 28px; padding: 0 10px; font-size: 11px; }
 
 .composer-area { flex: 0 0 auto; width: min(720px, calc(100% - 36px)); margin: 0 auto 10px; }
-.composer-area .save-state { display: block; margin: 5px 13px 0; text-align: right; }
 .chat-input {
   flex: 0 0 auto;
   width: 100%;

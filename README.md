@@ -1,18 +1,18 @@
 # Tailor
 
-Tailor is a personal, human-in-the-loop resume tailoring workspace. It turns a pasted job description into evidence-linked edit proposals, keeps every approved state as a browser-local revision, previews a fixed resume template as HTML, and generates PDF files only on request.
+Tailor is a personal, human-in-the-loop resume tailoring workspace. It turns a pasted job description into evidence-linked edit proposals, tracks approved states for the lifetime of the open tab, previews a fixed resume template as HTML, and generates PDF files only on request.
 
 The complete product and architecture baseline is in [docs/plan.md](docs/plan.md).
 
 ## Architecture
 
-- `frontend/`: React, Vite, TypeScript, IndexedDB session history, deployed to Vercel.
+- `frontend/`: React, Vite, TypeScript, and an intentionally disposable in-memory workspace, deployed to Vercel.
 - `backend/`: stateless FastAPI service, YAML-defined Pydantic AI agents and resume tools, typed edit validation, Jinja templates, and WeasyPrint export.
 - `backend/canon/resume.yaml`: validated repository seed with stable content IDs.
 - `backend/canon/reference/resume0726.pdf`: immutable source and visual reference.
 - `backend/render/templates/resume-v1`: immutable resume renderer shared by browser preview and PDF export.
 
-The backend does not keep sessions or generated artifacts. A browser backup contains bases, sessions, revisions, plans, decisions, and cover-letter state. Downloaded PDFs remain in the user's filesystem.
+The backend does not keep sessions or generated artifacts. Refreshing or closing the tab discards the active session. Downloaded PDFs remain in the user's filesystem.
 
 ## Local setup
 
@@ -59,7 +59,7 @@ Deploy `frontend/` as the Vercel project root and set `VITE_API_BASE_URL` to the
 
 ## Base updates
 
-Tailoring decisions never modify `backend/canon/resume.yaml`. The Promote control creates an immutable browser-local base version and downloads a validated replacement YAML file. Replacing the repository seed and committing it remain deliberate local actions, not application behavior.
+Tailoring decisions never modify `backend/canon/resume.yaml`. Replacing the repository seed and committing it remain deliberate local actions, not application behavior.
 
 ## Security boundary
 

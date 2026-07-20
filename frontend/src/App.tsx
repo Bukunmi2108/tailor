@@ -3,25 +3,21 @@ import {
   DownloadSimple,
   FileArrowDown,
   FileText,
-  FloppyDisk,
   LockKey,
   PaperPlaneTilt,
   Plus,
   SignOut,
   DotsThree,
   Stop,
-  UploadSimple,
   Warning,
 } from "@phosphor-icons/react";
 import { api, download, token } from "./api";
 import { applyServerEvent, connectChat } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
-import { db, withSessionLock } from "./db";
 import { deriveResumeLocal } from "./edit-engine";
 import { ReviewDeck } from "./review-deck";
 import type {
   BaseVersion,
-  Backup,
   ChatMessage,
   CoverLetter,
   Decision,
@@ -73,8 +69,8 @@ function Login({ onDone }: { onDone: () => void }) {
           <p className="kicker">Personal workspace</p>
           <h1>Resume work that stays grounded.</h1>
           <p className="lede">
-            Enter your passphrase to open the private tailoring interface. Your session
-            remains in this browser.
+            Enter your passphrase to open the private tailoring interface. Work remains
+            available only while this tab stays open.
           </p>
         </div>
         <form onSubmit={submit}>
@@ -114,10 +110,8 @@ function App() {
   const [draft, setDraft] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "failed">("saved");
   const [activeReview, setActiveReview] = useState<ActiveReview>();
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
-  const importRef = useRef<HTMLInputElement>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const revisionRef = useRef(revision);
@@ -128,11 +122,11 @@ function App() {
   messagesRef.current = messages;
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const activeAssistantId = useRef<string | undefined>(undefined);
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const validationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const validationGeneration = useRef(0);
   const exportTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const reviewBases = useRef(new Map<string, Resume>());
+  const revisions = useRef(new Map<string, Revision>());
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
@@ -147,17 +141,7 @@ function App() {
     setError("");
     try {
       const repository = await api.base();
-      await db.putBase({ ...repository, createdAt: now() });
       setBase(repository);
-      const active = await db.getActiveSession();
-      if (active) {
-        const activeRevision = await db.getRevision(active.activeRevisionId);
-        setSession(active);
-        setRevision(activeRevision);
-        setWorkingResume(activeRevision?.resume);
-        setMessages(active.messages);
-        setActiveReview(active.activeReview);
-      }
     } catch (value) {
       if (!token.get()) setAuthenticated(false);
       setError(value instanceof Error ? value.message : "Could not start Tailor");
@@ -189,7 +173,7 @@ function App() {
     [previewHtml],
   );
 
-  function persistSessionPatch(patch: Partial<Session>, nextMessages?: ChatMessage[]) {
+  function updateSession(patch: Partial<Session>, nextMessages?: ChatMessage[]) {
     if (!sessionRef.current) return;
     const next: Session = {
       ...sessionRef.current,
@@ -197,21 +181,8 @@ function App() {
       messages: nextMessages ?? sessionRef.current.messages,
       updatedAt: now(),
     };
+    sessionRef.current = next;
     setSession(next);
-    setSaveState("saving");
-    clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(async () => {
-      try {
-        await db.patchSession(next.sessionId, {
-          ...patch,
-          messages: nextMessages ?? messagesRef.current,
-          updatedAt: next.updatedAt,
-        });
-        setSaveState("saved");
-      } catch {
-        setSaveState("failed");
-      }
-    }, 400);
   }
 
   function updateMessagePart(
@@ -237,17 +208,15 @@ function App() {
     if (!sessionId) return;
     const generation = ++validationGeneration.current;
     clearTimeout(validationTimer.current);
-    setSaveState("saving");
     validationTimer.current = setTimeout(async () => {
       try {
         const result = await api.derive(planBase, plan, decisions, plan.base_snapshot_hash);
         if (generation !== validationGeneration.current) return;
         workingResumeRef.current = result.resume;
         setWorkingResume(result.resume);
-        await withSessionLock(sessionId, async () => {
-        const currentSession = await db.getSession(sessionId);
+        const currentSession = sessionRef.current;
         if (!currentSession) throw new Error("The current session is missing");
-        const currentRevision = await db.getRevision(currentSession.activeRevisionId);
+        const currentRevision = revisions.current.get(currentSession.activeRevisionId);
         if (!currentRevision) throw new Error("The current resume revision is missing");
         if (result.content_hash === currentRevision.contentHash) return;
         const revisionId = id("revision");
@@ -262,15 +231,12 @@ function App() {
           note: "Updated edit decisions",
         };
         const nextSession = { ...currentSession, activeRevisionId: revisionId, updatedAt: created };
-        await db.saveRevision(nextSession, nextRevision, currentRevision.revisionId);
+        revisions.current.set(revisionId, nextRevision);
         revisionRef.current = nextRevision;
         sessionRef.current = nextSession;
         setSession(nextSession);
-        });
-        setSaveState("saved");
       } catch (value) {
         if (generation !== validationGeneration.current) return;
-        setSaveState("failed");
         setError(value instanceof Error ? value.message : "Could not validate edits");
       }
     }, 500);
@@ -324,14 +290,6 @@ function App() {
     (edit) => edit.edit_id === (reviewPart.activeEditId ?? reviewPart.plan.edits[0]?.edit_id),
   );
 
-  useEffect(() => {
-    if (!reviewPart || !session || reviewBases.current.has(reviewPart.plan.base_snapshot_hash)) return;
-    void db.sessionRevisions(session.sessionId).then((history) => {
-      const baseRevision = history.find((item) => item.contentHash === reviewPart.plan.base_snapshot_hash);
-      if (baseRevision) reviewBases.current.set(reviewPart.plan.base_snapshot_hash, baseRevision.resume);
-    });
-  }, [reviewPart, session]);
-
   const focusPreviewTarget = useCallback((edit?: Edit) => {
     if (!edit) return;
     const frame = previewRef.current;
@@ -367,11 +325,9 @@ function App() {
       const activeEditId = part.activeEditId
         ?? part.plan.edits.find((edit) => !part.decisions.some((decision) => decision.edit_id === edit.edit_id))?.edit_id
         ?? part.plan.edits[0]?.edit_id;
-      void (async () => {
+      void (() => {
         if (!reviewBases.current.has(part.plan.base_snapshot_hash)) {
-          const history = sessionRef.current
-            ? await db.sessionRevisions(sessionRef.current.sessionId)
-            : [];
+          const history = [...revisions.current.values()];
           const baseRevision = history.find((item) => item.contentHash === part.plan.base_snapshot_hash);
           if (!baseRevision) {
             setError("The resume snapshot for this review is missing");
@@ -384,14 +340,14 @@ function App() {
         );
         const review = { messageId, partId };
         setActiveReview(review);
-        persistSessionPatch({ activeReview: review }, next);
+        updateSession({ activeReview: review }, next);
       })();
     },
     onCoverLetterChange: (messageId, partId, coverLetter: CoverLetter) => {
       const next = updateMessagePart(messageId, partId, (p) =>
         p.type === "cover_letter" ? { ...p, coverLetter } : p,
       );
-      persistSessionPatch({ coverLetter }, next);
+      updateSession({ coverLetter }, next);
     },
     onEditMessage: (messageId, text) => {
       const target = messagesRef.current.find((m) => m.id === messageId);
@@ -439,7 +395,7 @@ function App() {
         createdAt: created,
         updatedAt: created,
       };
-      await db.replaceActiveSession(currentSession, currentRevision);
+      revisions.current.set(revisionId, currentRevision);
       revisionRef.current = currentRevision;
       workingResumeRef.current = currentRevision.resume;
       setSession(currentSession);
@@ -494,18 +450,20 @@ function App() {
         messagesRef.current = transcript;
         setMessages(transcript);
         if (event.type === "analysis.completed") {
-          persistSessionPatch({
+          updateSession({
             currentAnalysis: event.analysis,
             company: event.analysis.company || sessionRef.current?.company,
             roleTitle: event.analysis.role_title || sessionRef.current?.roleTitle,
           });
         } else if (event.type === "cover_letter.drafted") {
-          persistSessionPatch({ coverLetter: event.cover_letter });
+          updateSession({ coverLetter: event.cover_letter });
+        } else if (event.type === "edits.proposed") {
+          reviewBases.current.set(event.plan.base_snapshot_hash, structuredClone(chatResume));
         } else if (event.type === "message.completed") {
-          persistSessionPatch({ messageHistory: event.message_history }, transcript);
+          updateSession({ messageHistory: event.message_history }, transcript);
         } else if (event.type === "error") {
           setError(event.message);
-          persistSessionPatch({}, transcript);
+          updateSession({}, transcript);
         }
       },
       () => {
@@ -544,7 +502,7 @@ function App() {
       );
       messagesRef.current = next;
       setMessages(next);
-      persistSessionPatch({}, next);
+      updateSession({}, next);
     }
     activeAssistantId.current = undefined;
     setConnecting(false);
@@ -600,48 +558,23 @@ function App() {
     }
   }
 
-  async function backup() {
-    const value = await db.backup();
-    download(
-      new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }),
-      `tailor-backup-${new Date().toISOString().slice(0, 10)}.json`,
-    );
-  }
-  async function restore(file?: File) {
-    if (!file) return;
-    try {
-      const value = JSON.parse(await file.text()) as Backup;
-      await db.restore(value);
-      await boot();
-    } catch (value) {
-      setError(value instanceof Error ? value.message : "Import failed");
-    } finally {
-      if (importRef.current) importRef.current.value = "";
-    }
-  }
-
   async function startFresh() {
     if (!sessionRef.current && messagesRef.current.length === 0) {
       draftRef.current?.focus();
       return;
     }
-    if (!confirm("Start a fresh tailoring session? Your current session will remain saved in this browser."))
+    if (!confirm("Start a new session? Your current work will be permanently discarded."))
       return;
 
     socketRef.current?.close();
-    clearTimeout(persistTimer.current);
     clearTimeout(validationTimer.current);
     validationGeneration.current += 1;
-    const current = sessionRef.current;
-    if (current) {
-      await db.putSession({
-        ...current,
-        activeRevisionId: revisionRef.current?.revisionId ?? current.activeRevisionId,
-        messages: messagesRef.current,
-        updatedAt: now(),
-      });
-    }
-    await db.clearActiveSession();
+    revisions.current.clear();
+    reviewBases.current.clear();
+    sessionRef.current = undefined;
+    revisionRef.current = undefined;
+    workingResumeRef.current = undefined;
+    messagesRef.current = [];
     setSession(undefined);
     setRevision(undefined);
     setWorkingResume(undefined);
@@ -651,7 +584,7 @@ function App() {
     setPreviewHtml("");
     setActiveReview(undefined);
     setError("");
-    setSaveState("saved");
+    setExportState({ status: "idle" });
     requestAnimationFrame(() => draftRef.current?.focus());
   }
 
@@ -680,8 +613,6 @@ function App() {
                   <DotsThree weight="bold" />
                 </summary>
                 <div className="utility-menu__panel">
-                  <button onClick={backup}><FloppyDisk /> Export backup</button>
-                  <button onClick={() => importRef.current?.click()}><UploadSimple /> Import backup</button>
                   <button
                     onClick={() => {
                       token.clear();
@@ -692,13 +623,6 @@ function App() {
                   </button>
                 </div>
               </details>
-              <input
-                ref={importRef}
-                hidden
-                type="file"
-                accept="application/json"
-                onChange={(e) => restore(e.target.files?.[0])}
-              />
             </div>
           </div>
           {activeReview && reviewPart && revision && workingResume ? (
@@ -712,7 +636,7 @@ function App() {
                 const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
                   part.type === "edits_proposed" ? { ...part, activeEditId } : part,
                 );
-                persistSessionPatch({}, next);
+                updateSession({}, next);
               }}
               onDecision={(decision) => {
                 const nextDecisions = [
@@ -742,12 +666,12 @@ function App() {
                   setError(value instanceof Error ? value.message : "Could not apply this edit");
                   return;
                 }
-                persistSessionPatch({}, next);
+                updateSession({}, next);
                 validatePlanDecisions(reviewPart.plan, nextDecisions, planBase);
               }}
               onClose={() => {
                 setActiveReview(undefined);
-                persistSessionPatch({ activeReview: undefined });
+                updateSession({ activeReview: undefined });
                 const resume = workingResumeRef.current;
                 if (resume) {
                   void api.previewResume(resume).then(setPreviewHtml).catch((value) => setError(value.message));
@@ -797,7 +721,6 @@ function App() {
                 </button>
               )}
             </form>
-            <span className={`save-state ${saveState}`}>{saveState}</span>
           </div>}
         </section>
         <section className="preview-pane">
