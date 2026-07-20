@@ -61,7 +61,7 @@ The model's conversation state is never treated as durable memory. The browser s
 
 ### 3.6 Evidence invariant
 
-Agent-generated claims must identify the canonical or session evidence atoms from which they were derived. Evidence linkage assists review and deterministic checking; it does not remove the human approval requirement.
+Agent-generated claims must identify the canonical or session evidence atoms from which they were derived. Evidence linkage assists agent inspection and human review; it does not remove the human approval requirement.
 
 ### 3.7 Export invariant
 
@@ -104,24 +104,28 @@ The supplied PDF is copied into the repository as a permanent visual and content
 
 ```text
 tailor/
-├── canon/
-│   ├── resume.yaml
-│   ├── resume.schema.json
-│   └── reference/
-│       └── resume0726.pdf
 ├── backend/
+│   ├── Dockerfile
+│   ├── canon/
+│   │   ├── resume.yaml
+│   │   ├── resume.schema.json
+│   │   └── reference/resume0726.pdf
+│   ├── app/
+│   └── render/
 ├── frontend/
+│   ├── vercel.json
+│   └── src/
+├── Makefile
 ├── docs/
 │   └── plan.md
-└── templates/
 ```
 
 The artifacts have distinct roles:
 
 | Artifact | Purpose | Runtime mutability |
 |---|---|---|
-| `canon/reference/resume0726.pdf` | Original content and visual reference | Never modified by the application |
-| `canon/resume.yaml` | Repository canonical seed | Modified only by a deliberate human edit in the local repository; in-app promotion downloads replacement YAML |
+| `backend/canon/reference/resume0726.pdf` | Original content and visual reference | Never modified by the application |
+| `backend/canon/resume.yaml` | Repository canonical seed | Modified only by a deliberate human edit in the local repository; in-app promotion downloads replacement YAML |
 | Resume HTML/CSS/fonts | Fixed presentation system | Never modified by an agent or session |
 | Browser IndexedDB | Plans, decisions, revisions, cover letters, and export metadata | Updated during normal use |
 
@@ -144,7 +148,7 @@ The starting PDF is three A4 pages and uses Times New Roman with limited Arial u
 │ Hugging Face Space — Docker SDK                            │
 │ FastAPI backend                                             │
 │                                                            │
-│ Agent orchestration · guardrails · edit validation          │
+│ Pydantic AI agents · resume tools · edit validation         │
 │ Jinja rendering · WeasyPrint on-demand export               │
 │ stateless request processing                                │
 └──────────────┬────────────────────────────┬─────────────────┘
@@ -176,17 +180,16 @@ Responsibilities:
 
 Configuration:
 
-- `VITE_API_BASE_URL` identifies the deployed backend URL when direct cross-origin requests are used.
-- Alternatively, Vercel can rewrite `/api/*` to the Hugging Face Space, giving the browser a same-origin API surface.
+- `VITE_API_BASE_URL` identifies the Hugging Face Space origin.
 - Only non-secret values may use `VITE_` variables because Vite exposes them to client code.
 
 Recommended request path:
 
 ```text
-Browser → https://tailor.example/api/* → Vercel rewrite → HF Space
+Browser on Vercel → direct HTTPS request → HF Space
 ```
 
-This avoids hard-coding the Space URL throughout the frontend and simplifies CORS. The backend must still validate the expected origin and must not assume a rewrite is an authentication mechanism.
+The backend allows only the configured Vercel production and preview origins through CORS. The public Space URL is not secret; ModelScope and authentication secrets remain backend-only.
 
 ### 7.2 Backend on Hugging Face Spaces
 
@@ -260,7 +263,7 @@ ModelProvider
 └── model_metadata() -> ModelMetadata
 ```
 
-Pydantic AI may be used if its custom OpenAI-compatible provider path works reliably with the selected ModelScope model. Direct use of the OpenAI-compatible Python SDK is an acceptable fallback and may be simpler. Pydantic models remain the authoritative validation layer regardless of the client library.
+Pydantic AI is the agent framework. Each task is defined by a versioned YAML agent specification loaded with `Agent.from_file`. Agents use typed `PromptedOutput`, an OpenAI-compatible `OpenAIChatModel` for every endpoint, a `FallbackModel` spanning the configured primary, secondary, and independent models, and a custom resume capability that exposes evidence-search and evidence-inspection tools. Pydantic models remain the authoritative output contract.
 
 ### 8.2 Selecting the best available model
 
@@ -323,22 +326,22 @@ Native ModelScope `response_format: json_schema` is not a production dependency.
 
 The production strategy is:
 
-1. send a strict JSON-only prompt containing the required response shape;
-2. extract and parse the JSON response;
-3. validate it with the authoritative Pydantic model;
-4. on validation failure, make one bounded repair request containing the validation errors;
-5. after repeated invalid output, advance to the next configured model;
-6. if no configured model returns valid output, fail the run without creating a plan or changing the active revision.
+1. create a Pydantic AI agent with the authoritative Pydantic output type wrapped in `PromptedOutput`;
+2. let Pydantic AI include the JSON schema in the prompt and parse the returned JSON;
+3. validate the result against the output model;
+4. on parse or validation failure, let the agent issue one bounded schema-repair retry;
+5. use `FallbackModel` for retryable provider, quota, timeout, and server failures across the configured model chain;
+6. if the agent cannot produce a valid typed result, fail the run without creating a plan or changing the active revision.
 
 Native schema mode may be enabled later as an optimization for a specific model only after a live compatibility test. It does not replace backend Pydantic validation.
 
-The backend never applies raw model prose as an edit plan. It parses the response, validates it, normalizes it, runs deterministic guardrails, and returns the proposed plan. The frontend persists a plan in IndexedDB only after the validated response succeeds.
+The backend never applies raw model prose as an edit plan. Pydantic AI validates the typed response, and the edit engine enforces target existence, exact before values, protected fields, operation shape, and snapshot identity when the human approves proposals. The frontend persists a plan in IndexedDB only after typed generation succeeds.
 
 ## 9. Canonical Resume Model
 
 ### 9.1 Canonical YAML
 
-`canon/resume.yaml` is the repository-tracked seed and portable representation of the base resume. Every addressable content item has a permanent stable ID. In the deployed application, IndexedDB identifies the current browser-local operational base version because writing into the Space checkout would not provide durable repository history.
+`backend/canon/resume.yaml` is the repository-tracked seed and portable representation of the base resume. Every addressable content item has a permanent stable ID. In the deployed application, IndexedDB identifies the current browser-local operational base version because writing into the Space checkout would not provide durable repository history.
 
 Representative structure:
 
@@ -429,10 +432,10 @@ At application startup, the backend validates `resume.yaml` and exposes the vali
 
 Two supported paths exist:
 
-1. A human directly edits `canon/resume.yaml` in the local repository; after deployment, the backend validates and exposes that repository seed and the frontend registers it as a base version.
+1. A human directly edits `backend/canon/resume.yaml` in the local repository; after deployment, the backend validates and exposes that repository seed and the frontend registers it as a base version.
 2. A human selects one or more session changes, previews their effect on the base, and explicitly confirms promotion.
 
-The second path writes a new browser-local base version to IndexedDB only after confirmation. It also downloads a YAML representation that can later replace `canon/resume.yaml` in the local repository. The deployed backend does not attempt to commit or push Git changes. A local Git commit or push remains optional and outside normal session saving.
+The second path writes a new browser-local base version to IndexedDB only after confirmation. It also downloads a YAML representation that can later replace `backend/canon/resume.yaml` in the local repository. The deployed backend does not attempt to commit or push Git changes. A local Git commit or push remains optional and outside normal session saving.
 
 ## 10. Fixed Template and Rendering
 
@@ -791,7 +794,7 @@ derive_revision(plan_base_snapshot, plan, decisions) -> ResumeSnapshot
 
 The function does not mutate its input. Recomputing from the same frozen inputs produces the same output.
 
-Human-modified values pass the same structural, link, number, protected-field, and layout-warning checks as agent text. Warnings may be overridden by the human, but the override is recorded.
+Human-modified values pass through the same typed operation and protected-field application path as agent text. The modification and approval decision are recorded.
 
 Decision updates include an expected local session revision. Before persisting the returned snapshot, the frontend performs an IndexedDB transactional compare-and-swap. A stale tab aborts its local write, reloads the active revision, and may resubmit. The backend separately rejects a plan whose expected snapshot hash does not match the snapshot supplied in the request.
 
@@ -804,9 +807,8 @@ The preferred workflow is two-stage:
 1. Analyze the job description.
 2. Let the user inspect or correct the analysis.
 3. Propose edits against the current resume revision.
-4. Validate and normalize the plan.
-5. Run deterministic guardrails.
-6. Present proposals without applying them.
+4. Validate the typed plan through Pydantic AI.
+5. Present proposals without applying them.
 
 This costs an additional model call compared with a single-stage workflow but prevents incorrect analysis from contaminating every edit.
 
@@ -830,27 +832,11 @@ The model is instructed to:
 
 Conciseness is a quality preference, not a hard page-count constraint.
 
-### 15.3 Deterministic guardrails
+### 15.3 Agent capabilities and application validation
 
-Guardrails run on agent and human modifications before a revision is saved:
+The YAML-defined agents use a custom `ResumeTools` capability. It exposes typed tools to search verified resume atoms, inspect exact evidence IDs, and inspect corrected job requirements. The agent must use these tools before citing evidence or targeting an operation.
 
-- target and parent IDs exist;
-- expected values match the plan-base revision;
-- protected fields remain unchanged;
-- evidence IDs exist;
-- numbers remain bound to their source evidence;
-- employer-specific facts are not transferred between roles;
-- every factual component of a new session item is supported by its cited evidence;
-- new content does not transfer metrics, tools, responsibilities, or outcomes across ownership boundaries;
-- unfamiliar technology or proper-noun additions are flagged;
-- changed leadership or ownership verbs are flagged;
-- conflicting operations are rejected;
-- URLs use approved schemes;
-- content contains no HTML;
-- excessively large text changes receive a review warning;
-- browser page estimate is updated after application.
-
-These checks are warning and conflict controls, not a mathematical guarantee of truth. Human review remains mandatory.
+Truthfulness is achieved through evidence-aware agent behavior and explicit human approval. At application time the edit engine enforces only mechanical invariants: the plan targets the supplied snapshot hash, targets and collections exist, `before` values match exactly, protected factual fields cannot be changed through generic rewrites, duplicate IDs are rejected, operations are schema-valid, and conflicting or stale operations fail.
 
 ## 16. Cover Letter Workflow
 
@@ -1173,21 +1159,9 @@ The product sends resume content and job descriptions to ModelScope for inferenc
 - cross-tab notifications reload newer state;
 - concurrent session writes serialize through Web Locks where supported.
 
-### 23.3 Guardrails
+### 23.3 Agent architecture
 
-Fixtures cover:
-
-- fabricated technologies;
-- new and reformatted numbers;
-- metrics transferred between employers;
-- altered employers, titles, dates, or contact details;
-- inflated ownership language;
-- stale targets;
-- invalid evidence IDs;
-- HTML injection;
-- unsafe links;
-- oversized changes;
-- parent-child edit conflicts.
+Tests verify that every YAML agent specification loads, the custom resume capability exposes its typed tools, the configured Pydantic AI model is a fallback chain, and malformed typed output receives the bounded Pydantic AI retry behavior. Agent quality is measured with real JD fixtures rather than heuristic fabrication-lint fixtures.
 
 ### 23.4 Agent evaluation
 
@@ -1233,7 +1207,7 @@ Playwright scenarios:
 10. Export resume and cover letter.
 11. Reopen the session and regenerate a PDF from the recorded revision, verifying the revision hash, template version, extracted content, and expected page behavior.
 
-Deployment smoke tests verify Vercel-to-Space routing, CORS or rewrite behavior, IndexedDB behavior on the stable production origin, secret presence, provider availability, and export dependencies.
+Deployment smoke tests verify direct Vercel-to-Space requests, CORS behavior, IndexedDB behavior on the stable production origin, secret presence, provider availability, and export dependencies.
 
 ## 24. Observability
 
@@ -1262,7 +1236,7 @@ Useful metrics:
 - analysis success rate;
 - plan success rate;
 - structured-output retry rate;
-- guardrail warning counts;
+- evidence-tool usage and citation accuracy;
 - proposal approval rate;
 - provider latency;
 - preview latency;
@@ -1328,7 +1302,7 @@ Exit criteria:
 - restoring a revision reproduces its content hash;
 - stale updates cannot overwrite newer work.
 
-### Phase 3 — Typed edit engine and guardrails
+### Phase 3 — Pydantic AI agents and typed edit engine
 
 Deliverables:
 
@@ -1336,8 +1310,8 @@ Deliverables:
 - decision sets;
 - deterministic derivation;
 - conflict validation;
-- evidence validation;
-- protected-field and fabrication warnings;
+- YAML agent specifications and resume capabilities;
+- protected-field validation;
 - comprehensive unit tests.
 
 Exit criteria:
@@ -1456,7 +1430,7 @@ The following decisions are accepted for version 1:
 11. ModelScope is the inference provider.
 12. The initial model chain is Qwen3.5-397B-A17B, Qwen3.5-35B-A3B, then the independent Nemotron3 Nano llama.cpp Space.
 13. Model IDs remain configurable and the two ModelScope candidates are compared through tailoring evaluations.
-14. Structured output uses strict JSON instructions, Pydantic validation, one bounded repair request, and safe model fallback; native JSON Schema is optional only after model-specific verification.
+14. Structured output uses Pydantic AI `PromptedOutput`, Pydantic validation, one bounded repair request, and `FallbackModel`; native provider JSON Schema is optional only after model-specific verification.
 15. The ModelScope token exists only in backend secrets.
 16. Vercel hosts the frontend and a Docker Hugging Face Space hosts the backend.
 17. The backend is stateless; no durable Space volume or backend database is required for version 1.
@@ -1512,6 +1486,5 @@ Cover-letter generation and base promotion are the next complete milestone if th
 - Hugging Face Spaces overview and secrets: <https://huggingface.co/docs/hub/main/spaces-overview>
 - Hugging Face Spaces disk and storage behavior: <https://huggingface.co/docs/hub/main/spaces-storage>
 - Vercel Vite deployment: <https://vercel.com/docs/frameworks/frontend/vite>
-- Vercel rewrites: <https://vercel.com/docs/routing/rewrites>
 - WeasyPrint documentation: <https://doc.courtbouillon.org/weasyprint/stable/>
 - WeasyPrint API and versioning: <https://doc.courtbouillon.org/weasyprint/stable/api_reference.html>

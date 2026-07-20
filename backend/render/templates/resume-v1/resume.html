@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' data:; font-src data:; img-src data:;">
+  <title>{{ resume.meta.name }} resume</title>
+  <style>
+    @font-face { font-family: Tinos; src: url({{ fonts.tinos_regular }}); font-weight: 400; }
+    @font-face { font-family: Tinos; src: url({{ fonts.tinos_bold }}); font-weight: 700; }
+    @font-face { font-family: Tinos; src: url({{ fonts.tinos_italic }}); font-style: italic; }
+    @font-face { font-family: Arimo; src: url({{ fonts.arimo_regular }}); font-weight: 400; }
+    @font-face { font-family: Arimo; src: url({{ fonts.arimo_bold }}); font-weight: 700; }
+    @page { size: A4; margin: 16mm 19mm 16mm; }
+    * { box-sizing: border-box; }
+    html { background: #e7e5df; }
+    body { margin: 0 auto; width: 210mm; min-height: 297mm; padding: 16mm 19mm; background: white; color: #080808; font: 11.35pt/1.27 Tinos, serif; }
+    header { text-align: center; margin-bottom: 8mm; }
+    h1 { margin: 0; font: 700 16.5pt/1.05 Arimo, sans-serif; letter-spacing: .02em; }
+    .headline { margin: 1.2mm 0 1.4mm; font-size: 11.5pt; }
+    .contact { font-size: 9.3pt; }
+    a { color: inherit; text-decoration: none; }
+    section { margin: 0 0 5.4mm; }
+    h2 { margin: 0 0 1.5mm; border-bottom: .45pt solid #222; font: 700 10.4pt/1.2 Arimo, sans-serif; letter-spacing: .045em; }
+    p { margin: 0; }
+    .entry { break-inside: avoid; margin-bottom: 3.7mm; }
+    .page-break-before { break-before: page; }
+    .entry-head { display: flex; justify-content: space-between; gap: 5mm; align-items: baseline; }
+    .entry-title { font-weight: 700; }
+    .dates { white-space: nowrap; font-style: italic; }
+    .tagline { margin-top: .45mm; font-style: italic; }
+    ul { margin: .7mm 0 0 5.3mm; padding: 0; }
+    li { margin: .5mm 0; padding-left: .6mm; }
+    .project { margin-bottom: 2mm; }
+    .project-name { font-weight: 700; }
+    .link-list { white-space: nowrap; }
+    .skill-row { margin: .55mm 0; }
+    .certifications { columns: 1; }
+    .certifications li { break-inside: avoid; }
+    [hidden] { display: none !important; }
+    @media screen {
+      body { box-shadow: 0 18px 60px rgba(24, 21, 16, .14); }
+      @media (max-width: 850px) { body { width: 100%; min-height: auto; padding: 24px; } }
+    }
+    @media print { html, body { background: white; } body { width: auto; min-height: auto; padding: 0; } }
+  </style>
+</head>
+<body data-content-hash="{{ content_hash }}">
+  <header>
+    <h1>{{ resume.meta.name|upper }}</h1>
+    <p class="headline">{{ resume.meta.headline }}</p>
+    <p class="contact">{{ resume.meta.contact.location }} · {{ resume.meta.contact.phone }} · {{ resume.meta.contact.email }}</p>
+    <p class="contact link-list">{% for link in resume.meta.contact.links %}<a href="{{ link.url }}">{{ link.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  </header>
+  {% for section_name in resume.section_order %}
+    {% if section_name == 'profile' and resume.profile.visible %}
+      <section><h2>PROFILE</h2><p>{{ resume.profile.text }}</p></section>
+    {% elif section_name == 'experience' %}
+      <section><h2>EXPERIENCE</h2>
+      {% for role in resume.experience if role.visible %}<article class="entry{% if role.page_break_before %} page-break-before{% endif %}">
+        <div class="entry-head"><p><span class="entry-title">{{ role.company }} · {{ role.title }}</span>{% if role.location %} – {{ role.location }}{% endif %}</p><p class="dates">{{ role.dates }}</p></div>
+        {% if role.tagline and role.tagline.visible %}<p class="tagline">{{ role.tagline.text }}</p>{% endif %}
+        <ul>{% for bullet in role.bullets if bullet.visible %}<li>{{ bullet.text }}</li>{% endfor %}</ul>
+      </article>{% endfor %}</section>
+    {% elif section_name == 'projects' %}
+      <section><h2>SELECTED PROJECTS</h2>
+      {% for project in resume.projects if project.visible %}<p class="project"><span class="project-name">{{ project.name }}</span>{% for link in project.links %} · <a href="{{ link.url }}">{{ link.label }}</a>{% endfor %} {{ project.text }}</p>{% endfor %}</section>
+    {% elif section_name == 'education' %}
+      <section><h2>EDUCATION</h2>{% for item in resume.education if item.visible %}<article class="entry">
+        <div class="entry-head"><p><span class="entry-title">{{ item.institution }}</span> · {{ item.qualification }}</p><p class="dates">{{ item.dates }}</p></div>
+        {% if item.details.visible %}<p>{{ item.details.text }}</p>{% endif %}
+      </article>{% endfor %}</section>
+    {% elif section_name == 'skills' %}
+      <section><h2>TECHNICAL</h2>{% for group in resume.skills if group.visible %}<p class="skill-row"><strong>{{ group.label }}:</strong> {{ group.items|join(' · ') }}</p>{% endfor %}</section>
+    {% elif section_name == 'certifications' %}
+      <section><h2>CERTIFICATIONS</h2><ul class="certifications">{% for item in resume.certifications if item.visible %}<li{% if item.page_break_before %} class="page-break-before"{% endif %}>{{ item.text }}</li>{% endfor %}</ul></section>
+    {% elif section_name == 'leadership' %}
+      <section><h2>LEADERSHIP</h2>{% for item in resume.leadership if item.visible %}<p><strong>{{ item.title }}</strong> {{ item.text }}</p>{% endfor %}</section>
+    {% elif section_name == 'languages' %}
+      <section><h2>LANGUAGES</h2><p>{% for item in resume.languages if item.visible %}{{ item.language }} ({{ item.proficiency }}){% if not loop.last %} · {% endif %}{% endfor %}</p></section>
+    {% endif %}
+  {% endfor %}
+</body>
+</html>

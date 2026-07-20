@@ -1,1 +1,14 @@
 .env
+.env
+backend/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+*.pdf.tmp
+tailor_backend.egg-info/
+tsconfig.node.tsbuildinfo

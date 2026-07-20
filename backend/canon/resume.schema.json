@@ -1,0 +1,498 @@
+{
+  "$defs": {
+    "Certification": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        },
+        "page_break_before": {
+          "default": false,
+          "title": "Page Break Before",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "Certification",
+      "type": "object"
+    },
+    "Contact": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "phone": {
+          "title": "Phone",
+          "type": "string"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "location",
+        "phone",
+        "email",
+        "links"
+      ],
+      "title": "Contact",
+      "type": "object"
+    },
+    "Education": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "institution": {
+          "title": "Institution",
+          "type": "string"
+        },
+        "qualification": {
+          "title": "Qualification",
+          "type": "string"
+        },
+        "dates": {
+          "title": "Dates",
+          "type": "string"
+        },
+        "details": {
+          "$ref": "#/$defs/TextAtom"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "institution",
+        "qualification",
+        "dates",
+        "details"
+      ],
+      "title": "Education",
+      "type": "object"
+    },
+    "Experience": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "company": {
+          "title": "Company",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "location": {
+          "default": "",
+          "title": "Location",
+          "type": "string"
+        },
+        "dates": {
+          "title": "Dates",
+          "type": "string"
+        },
+        "tagline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextAtom"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bullets": {
+          "items": {
+            "$ref": "#/$defs/TextAtom"
+          },
+          "title": "Bullets",
+          "type": "array"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        },
+        "page_break_before": {
+          "default": false,
+          "title": "Page Break Before",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "company",
+        "title",
+        "dates",
+        "bullets"
+      ],
+      "title": "Experience",
+      "type": "object"
+    },
+    "Language": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "language": {
+          "title": "Language",
+          "type": "string"
+        },
+        "proficiency": {
+          "title": "Proficiency",
+          "type": "string"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "language",
+        "proficiency"
+      ],
+      "title": "Language",
+      "type": "object"
+    },
+    "Leadership": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "text"
+      ],
+      "title": "Leadership",
+      "type": "object"
+    },
+    "Link": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "url"
+      ],
+      "title": "Link",
+      "type": "object"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "headline": {
+          "title": "Headline",
+          "type": "string"
+        },
+        "contact": {
+          "$ref": "#/$defs/Contact"
+        }
+      },
+      "required": [
+        "name",
+        "headline",
+        "contact"
+      ],
+      "title": "Meta",
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "title": "Links",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "text"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "SkillGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "items"
+      ],
+      "title": "SkillGroup",
+      "type": "object"
+    },
+    "TextAtom": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "TextAtom",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "base_version": {
+      "default": 1,
+      "title": "Base Version",
+      "type": "integer"
+    },
+    "template_version": {
+      "default": "resume-v1",
+      "title": "Template Version",
+      "type": "string"
+    },
+    "section_order": {
+      "items": {
+        "enum": [
+          "profile",
+          "experience",
+          "projects",
+          "education",
+          "skills",
+          "certifications",
+          "leadership",
+          "languages"
+        ],
+        "type": "string"
+      },
+      "title": "Section Order",
+      "type": "array"
+    },
+    "meta": {
+      "$ref": "#/$defs/Meta"
+    },
+    "profile": {
+      "$ref": "#/$defs/TextAtom"
+    },
+    "experience": {
+      "items": {
+        "$ref": "#/$defs/Experience"
+      },
+      "title": "Experience",
+      "type": "array"
+    },
+    "projects": {
+      "items": {
+        "$ref": "#/$defs/Project"
+      },
+      "title": "Projects",
+      "type": "array"
+    },
+    "education": {
+      "items": {
+        "$ref": "#/$defs/Education"
+      },
+      "title": "Education",
+      "type": "array"
+    },
+    "skills": {
+      "items": {
+        "$ref": "#/$defs/SkillGroup"
+      },
+      "title": "Skills",
+      "type": "array"
+    },
+    "certifications": {
+      "items": {
+        "$ref": "#/$defs/Certification"
+      },
+      "title": "Certifications",
+      "type": "array"
+    },
+    "leadership": {
+      "items": {
+        "$ref": "#/$defs/Leadership"
+      },
+      "title": "Leadership",
+      "type": "array"
+    },
+    "languages": {
+      "items": {
+        "$ref": "#/$defs/Language"
+      },
+      "title": "Languages",
+      "type": "array"
+    }
+  },
+  "required": [
+    "section_order",
+    "meta",
+    "profile",
+    "experience",
+    "projects",
+    "education",
+    "skills",
+    "certifications",
+    "leadership",
+    "languages"
+  ],
+  "title": "ResumeData",
+  "type": "object"
+}

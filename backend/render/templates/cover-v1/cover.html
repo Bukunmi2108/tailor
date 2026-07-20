@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' data:; font-src data:">
+  <title>Cover letter</title>
+  <style>
+    @font-face { font-family: Tinos; src: url({{ fonts.tinos_regular }}); font-weight: 400; }
+    @font-face { font-family: Tinos; src: url({{ fonts.tinos_bold }}); font-weight: 700; }
+    @font-face { font-family: Arimo; src: url({{ fonts.arimo_bold }}); font-weight: 700; }
+    @page { size: A4; margin: 22mm 21mm; }
+    * { box-sizing: border-box; }
+    html { background: #e7e5df; }
+    body { margin: 0 auto; width: 210mm; min-height: 297mm; padding: 22mm 21mm; background: white; color: #080808; font: 11.5pt/1.48 Tinos, serif; }
+    h1 { margin: 0 0 18mm; padding-bottom: 3mm; border-bottom: .6pt solid #222; font: 700 16pt/1 Arimo, sans-serif; letter-spacing: .02em; }
+    p { margin: 0 0 5mm; }
+    .greeting { margin-bottom: 7mm; }
+    .signoff { margin-top: 8mm; }
+    @media screen { body { box-shadow: 0 18px 60px rgba(24, 21, 16, .14); } @media (max-width: 850px) { body { width: 100%; min-height: auto; padding: 24px; } } }
+    @media print { html, body { background: white; } body { width: auto; min-height: auto; padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1>{{ letter.name }}</h1>
+  <p class="greeting">{{ letter.greeting }}</p>
+  {% for paragraph in letter.paragraphs %}<p>{{ paragraph.text }}</p>{% endfor %}
+  <p>{{ letter.close }}</p>
+  <p class="signoff">{{ letter.signoff }}<br><strong>{{ letter.name }}</strong></p>
+</body>
+</html>

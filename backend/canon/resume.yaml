@@ -1,0 +1,120 @@
+schema_version: 1
+base_version: 1
+template_version: resume-v1
+section_order: [profile, experience, projects, education, skills, certifications, leadership, languages]
+meta:
+  name: Bukunmi Enoch Akinyemi
+  headline: AI Engineer · Legal Tech
+  contact:
+    location: Osun, Nigeria · Remote
+    phone: "+234 913 709 9774"
+    email: bkakinyemi21@gmail.com
+    links:
+      - {id: link.linkedin, label: LinkedIn, url: "https://www.linkedin.com/in/bukunmiakinyemi"}
+      - {id: link.github, label: GitHub, url: "https://github.com/Bukunmi2108"}
+      - {id: link.portfolio, label: Portfolio, url: "https://bukunmi-portfolio.vercel.app/"}
+profile:
+  id: profile.main
+  text: >-
+    First Class law graduate turned AI engineer - I understand legal workflows and I ship the systems that fix them.
+    Most recently at Qanooni AI (Dubai-based, remote), building enterprise legal AI: document-processing pipelines and
+    QCounsel, a 26-tool AI agent running inside Microsoft Word. I build production AI systems and the evaluation pipelines
+    that keep them honest, including a citation-hallucination benchmark spanning 6 frontier models. Previously sole engineer
+    at a legal document automation startup.
+  tags: [legal-ai, agents, evaluation, document-processing]
+  evidence_ids: [exp.qanooni, exp.casesimpli, proj.citation]
+experience:
+  - id: exp.qanooni
+    company: Qanooni AI
+    title: Software Engineer (Legal AI)
+    location: Dubai-based, Remote
+    dates: October 2025 – June 2026
+    tagline: {id: exp.qanooni.tagline, text: Built production AI systems for legal drafting and review at scale., tags: [legal-ai]}
+    bullets:
+      - {id: exp.qanooni.b1, text: "Integrated DocETL pipeline orchestration (Split → ParallelMap → CodeMap → Reduce).", tags: [pipelines, docetl, orchestration]}
+      - {id: exp.qanooni.b2, text: "Shipped multilingual legal-AI evaluation: English and Arabic evaluation splits, jurisdiction-aware judge prompts, pipeline evaluations, and prompt optimization.", tags: [evaluation, multilingual, prompt-optimization]}
+      - {id: exp.qanooni.b3, text: "Built QCounsel, a 26-tool Pydantic AI agent running inside Microsoft Word for legal research, drafting, and litigation workflows; designed its evaluation framework, tool-routing classifier, and clarify-vs-act logic.", tags: [agents, pydantic-ai, evaluation, microsoft-word]}
+      - {id: exp.qanooni.b4, text: "Production AI ops: feedback-triaged bug fixes from Langfuse trace IDs; span-level latency debugging; PostHog vs DB telemetry reconciliation for apply-rate analysis.", tags: [langfuse, observability, debugging, analytics]}
+      - {id: exp.qanooni.b5, text: "Stack: Python, FastAPI, Pydantic AI, DocETL, Langfuse, Claude API, pytest, Ruff, Pyright.", tags: [python, fastapi, pydantic-ai, testing]}
+  - id: exp.casesimpli
+    company: CaseSimpli Legal Tech Solutions
+    title: Lead Software Engineer
+    location: Remote
+    dates: November 2024 – October 2025
+    tagline: {id: exp.casesimpli.tagline, text: Led engineering on an AI-assisted legal document automation platform., tags: [leadership, legal-tech]}
+    bullets:
+      - {id: exp.casesimpli.b1, text: Built AI-assisted legal document automation system that reduced contract drafting time by 30% while preserving lawyer-in-the-loop oversight., tags: [automation, human-in-the-loop]}
+      - {id: exp.casesimpli.b2, text: "Built RAG pipelines for statutory materials and precedents, emphasizing citation grounding and controlled outputs.", tags: [rag, citations, legal-ai]}
+      - {id: exp.casesimpli.b3, text: Developed AI-powered legal chatbot; improved case analysis efficiency by 25%., tags: [chatbot, metrics]}
+      - {id: exp.casesimpli.b4, text: Collaborated with legal professionals to align system behavior with substantive legal expectations., tags: [collaboration, legal-domain]}
+      - {id: exp.casesimpli.b5, text: "Stack: Python (FastAPI), Next.js, PostgreSQL, OpenAI Assistants, Azure.", tags: [python, nextjs, postgresql, azure]}
+  - id: exp.dataquotient
+    company: Data Quotient Hub
+    title: Frontend Web Engineer (Part-Time)
+    location: ""
+    dates: April 2025 – October 2025
+    bullets:
+      - {id: exp.dataquotient.b1, text: Shipped responsive enterprise UIs in Next.js + TypeScript for a data-management product., tags: [frontend, nextjs, typescript]}
+      - {id: exp.dataquotient.b2, text: "Worked with backend teams to integrate APIs, ensure system reliability, and improve performance.", tags: [apis, performance, collaboration]}
+  - id: exp.glory
+    company: Glory Schools, Egbedi
+    title: ICT Manager & Instructor
+    location: ""
+    dates: 2022 – 2024
+    page_break_before: true
+    bullets:
+      - {id: exp.glory.b1, text: Built and maintained digital examination and e-learning platforms (99.9% uptime); implemented JWT authentication and role-based access control., tags: [platforms, jwt, rbac]}
+      - {id: exp.glory.b2, text: "Delivered a school management platform (Python + React + Docker; 1,400+ books, 3,000+ videos; 35+ PRs).", tags: [python, react, docker]}
+      - {id: exp.glory.b3, text: Taught practical programming and ICT., tags: [teaching, leadership]}
+projects:
+  - id: proj.capit
+    name: Capit – Glass-box image captioner
+    links:
+      - {id: proj.capit.demo, label: Live demo, url: "https://capit-one.vercel.app/"}
+      - {id: proj.capit.github, label: GitHub, url: "https://github.com/Bukunmi2108/capit"}
+      - {id: proj.capit.model, label: Model (HF), url: "https://huggingface.co/Bukunmi2108/capit-sat"}
+    text: "Show, Attend and Tell trained from scratch (frozen ResNet-50 encoder, Bahdanau attention + LSTM decoder, Flickr8k): BLEU-4 23.63 / CIDEr 62.80 (beam 5, Karpathy split). UI exposes per-word attention heatmaps and the beam candidates it rejected, with BLIP alongside as a closed-box contrast. Deployed: HF Space backend serving a self-contained model artifact."
+    tags: [pytorch, computer-vision, attention, hugging-face]
+  - id: proj.givemore
+    name: Givemore – MovieLens recommender
+    links:
+      - {id: proj.givemore.demo, label: Live demo, url: "https://givemore-one.vercel.app/"}
+      - {id: proj.givemore.github, label: GitHub, url: "https://github.com/Bukunmi2108/givemore"}
+    text: Item-item collaborative filtering (adjusted cosine, IUF-weighted) blended with TF-IDF content similarity and a Bayesian popularity fallback - precomputed offline into a 9 MB SQLite artifact served by a zero-ML-dependency FastAPI; framework-free TypeScript frontend.
+    tags: [recommender-systems, fastapi, sqlite, typescript]
+  - id: proj.citation
+    name: Legal Citation Hallucination Benchmark
+    links:
+      - {id: proj.citation.github, label: GitHub, url: "https://github.com/Bukunmi2108/legal_hallucination_dataset_evaluation"}
+    text: Async LLM evaluation pipeline measuring citation hallucination across 6 frontier models × 328 prompts (English + Arabic). Pluggable providers, Pydantic schemas, citation-fabrication rubric, resume capability. Modeled on Stanford RegLab's legal_hallucinations.
+    tags: [llm-evaluation, citations, multilingual, async-python]
+education:
+  - id: edu.escae
+    institution: ESCAE Benin University, Cotonou
+    qualification: LLB Law, First Class Honours
+    dates: September 2018 – August 2022
+    details: {id: edu.escae.details, text: "GPA: 4.92/5.0 (top 1% of cohort). Best Graduating Student, Faculty of Law. Student Senate President (Leadership Award). Thesis: 'Capital Punishment in Nigeria: An Examination of Human Rights Law and its Locus Standi in International Society.'", tags: [law, honors, leadership]}
+  - id: edu.wqu
+    institution: WorldQuant University
+    qualification: Master of Science, Financial Engineering
+    dates: In progress (2025-)
+    details: {id: edu.wqu.details, text: "Current coursework includes Financial Econometrics (cointegration, ECM/VECM, LASSO, Diebold-Mariano testing).", tags: [financial-engineering, econometrics]}
+skills:
+  - {id: skills.ai, label: AI / ML, items: [RAG pipelines, Agentic systems, PyTorch, Recommender systems, Langfuse, DocETL, LangChain, Hugging Face, Claude API, OpenAI API]}
+  - {id: skills.languages, label: Languages & Frameworks, items: [Python, FastAPI, SQLAlchemy, Pydantic, pytest, TypeScript, React, Next.js, Vite, SQL]}
+  - {id: skills.infrastructure, label: Infrastructure & Data, items: [PostgreSQL, Redis, Kafka, RabbitMQ, SQLite, Chroma, FAISS, Docker, Azure, AWS]}
+certifications:
+  - {id: cert.financial_engineering, text: Foundations of Financial Engineering – WorldQuant University}
+  - {id: cert.llms, text: Fundamentals of LLMs – DeepLearning.AI}
+  - {id: cert.advanced_learning, text: Advanced Learning Algorithms – Coursera ML Specialization}
+  - {id: cert.unsupervised, text: "Unsupervised Learning, Recommenders, Reinforcement Learning – Coursera ML Specialization", page_break_before: true}
+  - {id: cert.oracle, text: Oracle Cloud Infrastructure 2025 Certified AI Foundations Associate – September 2025}
+  - {id: cert.applied_ds, text: Applied Data Science Lab – WorldQuant University}
+  - {id: cert.clio, text: Clio Certified Administrator (Legal Practice Management) – September 2025}
+leadership:
+  - id: leadership.senate
+    title: Student Senate President, ESCAE Benin University (2019–2022)
+    text: Elected to represent 3,000+ students across all faculties. Led advocacy on academic quality, infrastructure, and student welfare. Recognized with Leadership Award upon graduation.
+languages:
+  - {id: language.english, language: English, proficiency: Full Professional Proficiency}
+  - {id: language.yoruba, language: Yoruba, proficiency: Native}
