@@ -56,28 +56,28 @@
   </header>
   {% for section_name in resume.section_order %}
     {% if section_name == 'profile' and resume.profile.visible %}
-      <section data-resume-section="profile"><h2>PROFILE</h2><p data-resume-id="{{ resume.profile.id }}">{{ resume.profile.text }}</p></section>
+      <section data-resume-section="profile"><h2>PROFILE</h2><p data-resume-id="{{ resume.profile.id }}" data-resume-field="text">{{ resume.profile.text }}</p></section>
     {% elif section_name == 'experience' %}
       <section data-resume-section="experience"><h2>EXPERIENCE</h2>
       {% for role in resume.experience if role.visible %}<article data-resume-id="{{ role.id }}" class="entry{% if role.page_break_before %} page-break-before{% endif %}">
         <div class="entry-head"><p><span class="entry-title">{{ role.company }} · {{ role.title }}</span>{% if role.location %} – {{ role.location }}{% endif %}</p><p class="dates">{{ role.dates }}</p></div>
-        {% if role.tagline and role.tagline.visible %}<p data-resume-id="{{ role.tagline.id }}" class="tagline">{{ role.tagline.text }}</p>{% endif %}
-        <ul>{% for bullet in role.bullets if bullet.visible %}<li data-resume-id="{{ bullet.id }}">{{ bullet.text }}</li>{% endfor %}</ul>
+        {% if role.tagline and role.tagline.visible %}<p data-resume-id="{{ role.tagline.id }}" data-resume-field="text" class="tagline">{{ role.tagline.text }}</p>{% endif %}
+        <ul>{% for bullet in role.bullets if bullet.visible %}<li data-resume-id="{{ bullet.id }}" data-resume-field="text">{{ bullet.text }}</li>{% endfor %}</ul>
       </article>{% endfor %}</section>
     {% elif section_name == 'projects' %}
       <section data-resume-section="projects"><h2>SELECTED PROJECTS</h2>
-      {% for project in resume.projects if project.visible %}<p data-resume-id="{{ project.id }}" class="project"><span class="project-name">{{ project.name }}</span>{% for link in project.links %} · <a href="{{ link.url }}">{{ link.label }}</a>{% endfor %} {{ project.text }}</p>{% endfor %}</section>
+      {% for project in resume.projects if project.visible %}<p data-resume-id="{{ project.id }}" class="project"><span class="project-name">{{ project.name }}</span>{% for link in project.links %} · <a href="{{ link.url }}">{{ link.label }}</a>{% endfor %} <span data-resume-field="text">{{ project.text }}</span></p>{% endfor %}</section>
     {% elif section_name == 'education' %}
       <section data-resume-section="education"><h2>EDUCATION</h2>{% for item in resume.education if item.visible %}<article data-resume-id="{{ item.id }}" class="entry">
         <div class="entry-head"><p><span class="entry-title">{{ item.institution }}</span> · {{ item.qualification }}</p><p class="dates">{{ item.dates }}</p></div>
-        {% if item.details.visible %}<p data-resume-id="{{ item.details.id }}">{{ item.details.text }}</p>{% endif %}
+        {% if item.details.visible %}<p data-resume-id="{{ item.details.id }}" data-resume-field="text">{{ item.details.text }}</p>{% endif %}
       </article>{% endfor %}</section>
     {% elif section_name == 'skills' %}
-      <section data-resume-section="skills"><h2>TECHNICAL</h2>{% for group in resume.skills if group.visible %}<p data-resume-id="{{ group.id }}" class="skill-row"><strong>{{ group.label }}:</strong> {{ group.items|join(' · ') }}</p>{% endfor %}</section>
+      <section data-resume-section="skills"><h2>TECHNICAL</h2>{% for group in resume.skills if group.visible %}<p data-resume-id="{{ group.id }}" class="skill-row"><strong>{{ group.label }}:</strong> <span data-resume-field="items">{{ group.items|join(' · ') }}</span></p>{% endfor %}</section>
     {% elif section_name == 'certifications' %}
       <section data-resume-section="certifications"><h2>CERTIFICATIONS</h2><ul class="certifications">{% for item in resume.certifications if item.visible %}<li data-resume-id="{{ item.id }}"{% if item.page_break_before %} class="page-break-before"{% endif %}>{{ item.text }}</li>{% endfor %}</ul></section>
     {% elif section_name == 'leadership' %}
-      <section data-resume-section="leadership"><h2>LEADERSHIP</h2>{% for item in resume.leadership if item.visible %}<p data-resume-id="{{ item.id }}"><strong>{{ item.title }}</strong> {{ item.text }}</p>{% endfor %}</section>
+      <section data-resume-section="leadership"><h2>LEADERSHIP</h2>{% for item in resume.leadership if item.visible %}<p data-resume-id="{{ item.id }}"><strong>{{ item.title }}</strong> <span data-resume-field="text">{{ item.text }}</span></p>{% endfor %}</section>
     {% elif section_name == 'languages' %}
       <section data-resume-section="languages"><h2>LANGUAGES</h2><p>{% for item in resume.languages if item.visible %}<span data-resume-id="{{ item.id }}">{{ item.language }} ({{ item.proficiency }})</span>{% if not loop.last %} · {% endif %}{% endfor %}</p></section>
     {% endif %}

@@ -24,12 +24,3 @@ def canon_payload() -> dict[str, Any]:
         "template_version": resume.template_version,
         "source": "repository_import",
     }
-
-
-def serialize_resume(resume: ResumeData) -> str:
-    return yaml.safe_dump(
-        resume.model_dump(mode="json", exclude_none=True),
-        sort_keys=False,
-        allow_unicode=True,
-        width=110,
-    )

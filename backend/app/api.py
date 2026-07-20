@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .auth import LoginRequest, LoginResponse, authenticate, require_auth
-from .canon import canon_payload, serialize_resume
+from .canon import canon_payload
 from .config import Settings, get_settings
 from .engine import EditConflict, derive_resume
 from .models import CoverLetter, EditDecision, ResumeData, TailorPlan
@@ -91,20 +91,6 @@ def provider_status(settings: Settings = Depends(get_settings)):
 @router.get("/base/current", dependencies=[Depends(require_auth)])
 def current_base():
     return canon_payload()
-
-
-@router.post("/base/promotions/preview", dependencies=[Depends(require_auth)])
-def promotion_preview(payload: SnapshotRequest):
-    return {"resume_snapshot": payload.resume, "content_hash": content_hash(payload.resume), "warnings": []}
-
-
-@router.post("/base/serialize-yaml", dependencies=[Depends(require_auth)])
-def serialize_yaml(payload: SnapshotRequest):
-    return Response(
-        serialize_resume(payload.resume),
-        media_type="application/yaml",
-        headers={"Content-Disposition": 'attachment; filename="resume.yaml"'},
-    )
 
 
 @router.post("/resume/derive", dependencies=[Depends(require_auth)])

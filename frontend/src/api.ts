@@ -191,11 +191,6 @@ export const api = {
       company,
       role_title,
     }),
-  yaml: (resume: Resume) =>
-    blobRequest("/api/base/serialize-yaml", {
-      resume,
-      template_version: resume.template_version,
-    }),
 };
 
 export function download(blob: Blob, filename: string) {
