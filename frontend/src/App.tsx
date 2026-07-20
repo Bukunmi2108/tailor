@@ -111,6 +111,13 @@ function App() {
   messagesRef.current = messages;
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [draft]);
 
   const boot = useCallback(async () => {
     if (!token.get()) return;
@@ -490,6 +497,8 @@ function App() {
             }}
           >
             <textarea
+              ref={draftRef}
+              rows={1}
               placeholder="Paste a job description, ask a question, or request a change…"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -500,7 +509,7 @@ function App() {
                 }
               }}
             />
-            <button className="primary" type="submit" disabled={connecting || !draft.trim()}>
+            <button type="submit" disabled={connecting || !draft.trim()}>
               <PaperPlaneTilt />
             </button>
           </form>
