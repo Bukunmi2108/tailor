@@ -6,6 +6,8 @@ import {
   Warning,
   Wrench,
 } from "@phosphor-icons/react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { wordDiff } from "./diff";
 import type {
   Analysis,
@@ -198,6 +200,25 @@ function CoverEditor({
   );
 }
 
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+};
+
+function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
+  return (
+    <div className="message-text">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {text}
+      </ReactMarkdown>
+      {streaming && <span className="stream-caret" />}
+    </div>
+  );
+}
+
 function ReasoningPanel({ text, streaming }: { text: string; streaming: boolean }) {
   const [open, setOpen] = useState(streaming);
   const autoOpened = useRef(streaming);
@@ -277,7 +298,13 @@ export type ChatActions = {
   onCoverLetterChange: (messageId: string, partId: string, coverLetter: CoverLetter) => void;
 };
 
-function MessageBubble({ message, actions }: { message: ChatMessage; actions: ChatActions }) {
+const MessageBubble = memo(function MessageBubble({
+  message,
+  actions,
+}: {
+  message: ChatMessage;
+  actions: ChatActions;
+}) {
   const parts = message.parts ?? [];
   const reasoning = parts.find((part) => part.type === "reasoning");
   const groups = useMemo(() => groupParts(parts.filter((part) => part.type !== "reasoning")), [parts]);
@@ -294,10 +321,11 @@ function MessageBubble({ message, actions }: { message: ChatMessage; actions: Ch
         switch (part.type) {
           case "text":
             return (
-              <p className="message-text" key={part.id}>
-                {part.text}
-                {streaming && index === groups.length - 1 && <span className="stream-caret" />}
-              </p>
+              <Markdown
+                key={part.id}
+                text={part.text}
+                streaming={streaming && index === groups.length - 1}
+              />
             );
           case "model":
             return <ModelBadge key={part.id} part={part} />;
@@ -343,7 +371,7 @@ function MessageBubble({ message, actions }: { message: ChatMessage; actions: Ch
       {message.role === "user" && <p className="message-text">{message.content}</p>}
     </article>
   );
-}
+});
 
 export function ChatThread({ messages, actions }: { messages: ChatMessage[]; actions: ChatActions }) {
   return (

@@ -111,7 +111,29 @@ button svg { width: 16px; height: 16px; }
 .message-bubble.user { align-self: flex-end; max-width: 84%; }
 .message-bubble.user .message-text { border-radius: var(--radius); background: var(--accent); color: white; padding: 10px 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
 .message-bubble.assistant { align-self: stretch; }
-.message-bubble .message-text { margin: 0; color: var(--text); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.message-bubble.assistant .message-text { color: var(--text); font-size: 13px; line-height: 1.62; }
+.message-text > :first-child { margin-top: 0; }
+.message-text > :last-child { margin-bottom: 0; }
+.message-text p { margin: 0 0 10px; }
+.message-text ul, .message-text ol { margin: 0 0 10px; padding-left: 20px; }
+.message-text li { margin: 3px 0; }
+.message-text li > p { margin: 0; }
+.message-text strong { font-weight: 700; color: var(--text); }
+.message-text em { color: var(--text-soft); }
+.message-text h1, .message-text h2, .message-text h3, .message-text h4 { margin: 16px 0 8px; color: var(--text); font-weight: 760; line-height: 1.3; }
+.message-text h1 { font-size: 17px; }
+.message-text h2 { font-size: 15px; }
+.message-text h3, .message-text h4 { font-size: 13px; }
+.message-text code { border-radius: 4px; background: var(--surface-muted); padding: 1px 5px; color: var(--accent-strong); font: 12px var(--font-mono); }
+.message-text pre { margin: 0 0 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 10px 12px; }
+.message-text pre code { border-radius: 0; background: transparent; padding: 0; color: var(--text-soft); }
+.message-text blockquote { margin: 0 0 10px; border-left: 2px solid var(--line-strong); padding-left: 11px; color: var(--text-soft); }
+.message-text a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.message-text a:hover { color: var(--accent); }
+.message-text table { margin: 0 0 10px; border-collapse: collapse; font-size: 12px; }
+.message-text th, .message-text td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; }
+.message-text th { background: var(--surface-muted); font-weight: 700; }
+.message-text hr { margin: 14px 0; border: 0; border-top: 1px solid var(--line); }
 .stream-caret { display: inline-block; width: 2px; height: 13px; margin-left: 2px; background: var(--accent); vertical-align: text-bottom; animation: pulse 0.9s var(--ease) infinite; }
 
 .chat-input {

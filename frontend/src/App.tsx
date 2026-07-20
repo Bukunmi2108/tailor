@@ -232,7 +232,7 @@ function App() {
     }
   }, []);
 
-  const actions: ChatActions = {
+  const actions: ChatActions = useMemo(() => ({
     onEditDecision: (messageId, partId, decision) => {
       const message = messagesRef.current.find((m) => m.id === messageId);
       const part = message?.parts?.find((p) => p.id === partId);
@@ -278,7 +278,8 @@ function App() {
       );
       persistSessionPatch({ coverLetter }, next);
     },
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [applyPlanDecisions]);
 
   async function sendMessage() {
     const text = draft.trim();
