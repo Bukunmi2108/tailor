@@ -93,6 +93,18 @@ export const db = {
   },
   putBase: (base: BaseVersion) => put("base_versions", base),
   putSession: (session: Session) => put("sessions", session),
+  async patchSession(id: string, patch: Partial<Session>) {
+    const database = await openDb();
+    const tx = database.transaction("sessions", "readwrite");
+    const store = tx.objectStore("sessions");
+    const current = await new Promise<Session>((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result as Session);
+      request.onerror = () => reject(request.error);
+    });
+    store.put({ ...current, ...patch });
+    await done(tx);
+  },
   putRevision: (revision: Revision) => put("resume_revisions", revision),
   async saveRevision(session: Session, revision: Revision, expectedActive: string) {
     const database = await openDb();

@@ -93,8 +93,8 @@ export type Edit = {
   evidence_ids: string[];
   risk: "safe" | "review";
   warnings: string[];
-  before?: string;
-  after?: string;
+  before?: string | string[];
+  after?: string | string[];
   field?: string;
   visible?: boolean;
   [key: string]: unknown;
@@ -143,7 +143,7 @@ export type MessagePart =
       input?: Record<string, unknown>;
       output?: Record<string, unknown>;
     }
-  | { id: string; type: "edits_proposed"; plan: Plan; decisions: Decision[] }
+  | { id: string; type: "edits_proposed"; plan: Plan; decisions: Decision[]; activeEditId?: string }
   | { id: string; type: "cover_letter"; coverLetter: CoverLetter }
   | { id: string; type: "model"; provider: string; model: string; fallback?: boolean; reason?: string };
 
@@ -193,6 +193,7 @@ export type Session = {
   coverLetter?: CoverLetter;
   company?: string;
   roleTitle?: string;
+  activeReview?: { messageId: string; partId: string };
   createdAt: string;
   updatedAt: string;
 };

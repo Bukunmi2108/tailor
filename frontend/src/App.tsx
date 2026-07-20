@@ -17,12 +17,14 @@ import { api, download, token } from "./api";
 import { applyServerEvent, connectChat } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
 import { db, withSessionLock } from "./db";
+import { ReviewDeck } from "./review-deck";
 import type {
   BaseVersion,
   Backup,
   ChatMessage,
   CoverLetter,
   Decision,
+  Edit,
   MessagePart,
   Plan,
   Revision,
@@ -30,6 +32,7 @@ import type {
 } from "./types";
 
 type Preview = "resume" | "cover";
+type ActiveReview = { messageId: string; partId: string };
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
@@ -103,6 +106,8 @@ function App() {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "failed">("saved");
+  const [activeReview, setActiveReview] = useState<ActiveReview>();
+  const [applyingDecision, setApplyingDecision] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -113,6 +118,7 @@ function App() {
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const el = draftRef.current;
     if (!el) return;
@@ -133,6 +139,7 @@ function App() {
         setSession(active);
         setRevision(activeRevision);
         setMessages(active.messages);
+        setActiveReview(active.activeReview);
       }
     } catch (value) {
       if (!token.get()) setAuthenticated(false);
@@ -176,7 +183,11 @@ function App() {
     clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(async () => {
       try {
-        await db.putSession(next);
+        await db.patchSession(next.sessionId, {
+          ...patch,
+          messages: nextMessages ?? messagesRef.current,
+          updatedAt: next.updatedAt,
+        });
         setSaveState("saved");
       } catch {
         setSaveState("failed");
@@ -202,21 +213,26 @@ function App() {
   }
 
   const applyPlanDecisions = useCallback(async (plan: Plan, decisions: Decision[]) => {
-    const currentSession = sessionRef.current;
-    const currentRevision = revisionRef.current;
-    if (!currentSession || !currentRevision) return;
+    const sessionId = sessionRef.current?.sessionId;
+    if (!sessionId) return;
     setError("");
+    setApplyingDecision(true);
     try {
-      await withSessionLock(currentSession.sessionId, async () => {
-        const history = await db.sessionRevisions(currentSession.sessionId);
+      await withSessionLock(sessionId, async () => {
+        const currentSession = await db.getSession(sessionId);
+        if (!currentSession) throw new Error("The current session is missing");
+        const currentRevision = await db.getRevision(currentSession.activeRevisionId);
+        if (!currentRevision) throw new Error("The current resume revision is missing");
+        const history = await db.sessionRevisions(sessionId);
         const planBase = history.find((item) => item.contentHash === plan.base_snapshot_hash);
         if (!planBase) throw new Error("The revision targeted by this plan is missing");
         const result = await api.derive(planBase.resume, plan, decisions, plan.base_snapshot_hash);
+        if (result.content_hash === currentRevision.contentHash) return;
         const revisionId = id("revision");
         const created = now();
         const nextRevision: Revision = {
           revisionId,
-          sessionId: currentSession.sessionId,
+          sessionId,
           parentRevisionId: currentRevision.revisionId,
           resume: result.resume,
           contentHash: result.content_hash,
@@ -225,40 +241,70 @@ function App() {
         };
         const nextSession = { ...currentSession, activeRevisionId: revisionId, updatedAt: created };
         await db.saveRevision(nextSession, nextRevision, currentRevision.revisionId);
+        revisionRef.current = nextRevision;
+        sessionRef.current = nextSession;
         setRevision(nextRevision);
         setSession(nextSession);
       });
     } catch (value) {
       setError(value instanceof Error ? value.message : "Could not apply edits");
+    } finally {
+      setApplyingDecision(false);
     }
   }, []);
 
+  const reviewPart = useMemo(() => {
+    if (!activeReview) return undefined;
+    const message = messages.find((item) => item.id === activeReview.messageId);
+    const part = message?.parts?.find((item) => item.id === activeReview.partId);
+    return part?.type === "edits_proposed" ? part : undefined;
+  }, [activeReview, messages]);
+
+  const activeReviewEdit = reviewPart?.plan.edits.find(
+    (edit) => edit.edit_id === (reviewPart.activeEditId ?? reviewPart.plan.edits[0]?.edit_id),
+  );
+
+  const focusPreviewTarget = useCallback((edit?: Edit) => {
+    if (!edit) return;
+    const frame = previewRef.current;
+    const document = frame?.contentDocument;
+    if (!document) return;
+    document.querySelectorAll(".tailor-review-target").forEach((node) =>
+      node.classList.remove("tailor-review-target"),
+    );
+    const escaped = CSS.escape(edit.target_id);
+    const collection = typeof edit.collection === "string"
+      ? edit.collection
+      : typeof edit.destination_collection === "string"
+        ? edit.destination_collection
+        : undefined;
+    const target = document.querySelector<HTMLElement>(`[data-resume-id="${escaped}"]`)
+      ?? (collection
+        ? document.querySelector<HTMLElement>(`[data-resume-section="${CSS.escape(collection)}"]`)
+        : null);
+    if (!target) return;
+    target.classList.add("tailor-review-target");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  useEffect(() => {
+    if (activeReviewEdit) requestAnimationFrame(() => focusPreviewTarget(activeReviewEdit));
+  }, [activeReviewEdit, previewHtml, focusPreviewTarget]);
+
   const actions: ChatActions = useMemo(() => ({
-    onEditDecision: (messageId, partId, decision) => {
+    onReviewEdits: (messageId, partId) => {
       const message = messagesRef.current.find((m) => m.id === messageId);
       const part = message?.parts?.find((p) => p.id === partId);
       if (!part || part.type !== "edits_proposed") return;
-      const nextDecisions = [...part.decisions.filter((d) => d.edit_id !== decision.edit_id), decision];
+      const activeEditId = part.activeEditId
+        ?? part.plan.edits.find((edit) => !part.decisions.some((decision) => decision.edit_id === edit.edit_id))?.edit_id
+        ?? part.plan.edits[0]?.edit_id;
       const next = updateMessagePart(messageId, partId, (p) =>
-        p.type === "edits_proposed" ? { ...p, decisions: nextDecisions } : p,
+        p.type === "edits_proposed" ? { ...p, activeEditId } : p,
       );
-      persistSessionPatch({}, next);
-      void applyPlanDecisions(part.plan, nextDecisions);
-    },
-    onApproveSafeEdits: (messageId, partId) => {
-      const message = messagesRef.current.find((m) => m.id === messageId);
-      const part = message?.parts?.find((p) => p.id === partId);
-      if (!part || part.type !== "edits_proposed") return;
-      const safe = part.plan.edits
-        .filter((edit) => edit.risk === "safe")
-        .map((edit) => ({ edit_id: edit.edit_id, decision: "approved" as const }));
-      const untouched = part.decisions.filter((d) => !safe.some((s) => s.edit_id === d.edit_id));
-      const nextDecisions = [...untouched, ...safe];
-      const next = updateMessagePart(messageId, partId, (p) =>
-        p.type === "edits_proposed" ? { ...p, decisions: nextDecisions } : p,
-      );
-      persistSessionPatch({}, next);
-      void applyPlanDecisions(part.plan, nextDecisions);
+      const review = { messageId, partId };
+      setActiveReview(review);
+      persistSessionPatch({ activeReview: review }, next);
     },
     onCoverLetterChange: (messageId, partId, coverLetter: CoverLetter) => {
       const next = updateMessagePart(messageId, partId, (p) =>
@@ -455,6 +501,7 @@ function App() {
     setDraft("");
     setPreview("resume");
     setPreviewHtml("");
+    setActiveReview(undefined);
     setError("");
     setSaveState("saved");
     requestAnimationFrame(() => draftRef.current?.focus());
@@ -506,7 +553,36 @@ function App() {
               />
             </div>
           </div>
-          {messages.length === 0 ? (
+          {activeReview && reviewPart && revision ? (
+            <ReviewDeck
+              plan={reviewPart.plan}
+              decisions={reviewPart.decisions}
+              resume={revision.resume}
+              activeEditId={reviewPart.activeEditId ?? reviewPart.plan.edits[0]?.edit_id ?? ""}
+              busy={applyingDecision}
+              onActiveChange={(activeEditId) => {
+                const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
+                  part.type === "edits_proposed" ? { ...part, activeEditId } : part,
+                );
+                persistSessionPatch({}, next);
+              }}
+              onDecision={(decision) => {
+                const nextDecisions = [
+                  ...reviewPart.decisions.filter((item) => item.edit_id !== decision.edit_id),
+                  decision,
+                ];
+                const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
+                  part.type === "edits_proposed" ? { ...part, decisions: nextDecisions } : part,
+                );
+                persistSessionPatch({}, next);
+                void applyPlanDecisions(reviewPart.plan, nextDecisions);
+              }}
+              onClose={() => {
+                setActiveReview(undefined);
+                persistSessionPatch({ activeReview: undefined });
+              }}
+            />
+          ) : messages.length === 0 ? (
             <div className="empty">
               <FileText />
               <h2>Paste a job description or tell me what you need.</h2>
@@ -518,7 +594,7 @@ function App() {
           ) : (
             <ChatThread messages={messages} actions={actions} />
           )}
-          <div className="composer-area">
+          {!activeReview && <div className="composer-area">
             <form
               className="chat-input"
               onSubmit={(e) => {
@@ -544,7 +620,7 @@ function App() {
               </button>
             </form>
             <span className={`save-state ${saveState}`}>{saveState}</span>
-          </div>
+          </div>}
         </section>
         <section className="preview-pane">
           <div className="preview-toolbar">
@@ -579,7 +655,13 @@ function App() {
             </div>
           </div>
           {previewHtml ? (
-            <iframe title={`${preview} preview`} sandbox="" srcDoc={previewHtml} />
+            <iframe
+              ref={previewRef}
+              title={`${preview} preview`}
+              sandbox="allow-same-origin"
+              srcDoc={previewHtml}
+              onLoad={() => focusPreviewTarget(activeReviewEdit)}
+            />
           ) : (
             <div className="preview-empty">
               <FileText />

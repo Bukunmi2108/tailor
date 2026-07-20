@@ -8,104 +8,11 @@ import {
 } from "@phosphor-icons/react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { wordDiff } from "./diff";
 import type {
   ChatMessage,
   CoverLetter,
-  Decision,
-  Edit,
   MessagePart,
 } from "./types";
-
-function Diff({ edit }: { edit: Edit }) {
-  const parts = useMemo(
-    () =>
-      typeof edit.before === "string" && typeof edit.after === "string"
-        ? wordDiff(edit.before, edit.after)
-        : undefined,
-    [edit.before, edit.after],
-  );
-  if (!parts) return <p className="operation">{edit.op.replaceAll("_", " ")}</p>;
-  return (
-    <p className="diff">
-      {parts.map((part, index) => (
-        <span key={index} className={part.kind}>
-          {part.value}
-        </span>
-      ))}
-    </p>
-  );
-}
-
-const EditCard = memo(function EditCard({
-  edit,
-  decision,
-  onDecision,
-}: {
-  edit: Edit;
-  decision?: Decision;
-  onDecision: (decision: Decision) => void;
-}) {
-  const [custom, setCustom] = useState(decision?.modified_after ?? edit.after ?? "");
-  const selected = decision?.decision;
-  return (
-    <article className={`edit-card ${edit.risk}`}>
-      <header>
-        <div>
-          <span className="target">{edit.target_id}</span>
-          <h3>{edit.rationale}</h3>
-        </div>
-        <span className={`risk ${edit.risk}`}>{edit.risk}</span>
-      </header>
-      <Diff edit={edit} />
-      {edit.warnings?.map((warning) => (
-        <p className="warning" key={warning}>
-          <Warning /> {warning}
-        </p>
-      ))}
-      <div className="evidence">
-        {edit.evidence_ids.map((item) => (
-          <code key={item}>{item}</code>
-        ))}
-      </div>
-      {selected === "modified" && (
-        <textarea
-          aria-label="Modified replacement"
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          onBlur={() =>
-            onDecision({ edit_id: edit.edit_id, decision: "modified", modified_after: custom })
-          }
-        />
-      )}
-      <div className="decision-row">
-        <button
-          className={selected === "approved" ? "selected" : ""}
-          onClick={() => onDecision({ edit_id: edit.edit_id, decision: "approved" })}
-        >
-          <Check />
-          Approve
-        </button>
-        {typeof edit.after === "string" && (
-          <button
-            className={selected === "modified" ? "selected" : ""}
-            onClick={() =>
-              onDecision({ edit_id: edit.edit_id, decision: "modified", modified_after: custom })
-            }
-          >
-            Edit
-          </button>
-        )}
-        <button
-          className={selected === "rejected" ? "selected reject" : ""}
-          onClick={() => onDecision({ edit_id: edit.edit_id, decision: "rejected" })}
-        >
-          Reject
-        </button>
-      </div>
-    </article>
-  );
-});
 
 function CoverEditor({
   letter,
@@ -234,8 +141,7 @@ function groupParts(parts: MessagePart[]): Grouped[] {
 }
 
 export type ChatActions = {
-  onEditDecision: (messageId: string, partId: string, decision: Decision) => void;
-  onApproveSafeEdits: (messageId: string, partId: string) => void;
+  onReviewEdits: (messageId: string, partId: string) => void;
   onCoverLetterChange: (messageId: string, partId: string, coverLetter: CoverLetter) => void;
 };
 
@@ -271,22 +177,18 @@ const MessageBubble = memo(function MessageBubble({
           case "model":
             return <ModelBadge key={part.id} part={part} />;
           case "edits_proposed":
+            const decided = part.decisions.length;
+            const reviewCount = part.plan.edits.filter((edit) => edit.risk === "review").length;
             return (
-              <section className="proposed-edits" key={part.id}>
-                <div className="proposed-edits__heading">
+              <section className="proposal-summary" key={part.id}>
+                <div>
+                  <span>Resume review</span>
                   <h4>{part.plan.edits.length} proposed edit{part.plan.edits.length === 1 ? "" : "s"}</h4>
-                  <button className="quiet" onClick={() => actions.onApproveSafeEdits(message.id, part.id)}>
-                    Approve safe
-                  </button>
+                  <p>{decided} decided{reviewCount ? `, ${reviewCount} need a closer look` : ""}</p>
                 </div>
-                {part.plan.edits.map((edit) => (
-                  <EditCard
-                    key={edit.edit_id}
-                    edit={edit}
-                    decision={part.decisions.find((d) => d.edit_id === edit.edit_id)}
-                    onDecision={(decision) => actions.onEditDecision(message.id, part.id, decision)}
-                  />
-                ))}
+                <button className="primary" onClick={() => actions.onReviewEdits(message.id, part.id)}>
+                  {decided ? "Continue review" : "Review edits"}
+                </button>
               </section>
             );
           case "cover_letter":
