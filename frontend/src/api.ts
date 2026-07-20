@@ -1,5 +1,4 @@
 import type {
-  Analysis,
   BaseVersion,
   CoverLetter,
   Decision,
@@ -70,28 +69,6 @@ export const api = {
       configured: boolean;
       models: Array<{ model: string; ready: boolean }>;
     }>("/api/provider/status"),
-  analyze: (jd_raw: string, resume: Resume) =>
-    request<{ analysis: Analysis; model_id: string }>("/api/agent/analyze", {
-      method: "POST",
-      body: JSON.stringify({ jd_raw, resume }),
-    }),
-  plan: (
-    jd_raw: string,
-    resume: Resume,
-    analysis: Analysis,
-    instruction: string,
-    prior_decisions: Decision[],
-  ) =>
-    request<{ plan: Plan; model_id: string }>("/api/agent/plan", {
-      method: "POST",
-      body: JSON.stringify({
-        jd_raw,
-        resume,
-        analysis,
-        instruction: instruction || null,
-        prior_decisions,
-      }),
-    }),
   derive: (
     snapshot: Resume,
     plan: Plan,
@@ -137,28 +114,6 @@ export const api = {
     if (!response.ok) throw new Error("Preview failed");
     return response.text();
   },
-  cover: (
-    jd_raw: string,
-    resume: Resume,
-    analysis: Analysis,
-    tone: string,
-    length: string,
-    points: string,
-  ) =>
-    request<{ cover_letter: CoverLetter; model_id: string }>(
-      "/api/agent/cover-letter",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          jd_raw,
-          resume,
-          analysis,
-          tone,
-          length,
-          points,
-        }),
-      },
-    ),
   exportResume: (resume: Resume, company: string, role_title: string) =>
     blobRequest("/api/export/resume", {
       resume,
