@@ -78,3 +78,17 @@ export function deriveResumeLocal(base: Resume, plan: Plan, decisions: Decision[
   }
   return root as unknown as Resume;
 }
+
+/**
+ * Applies a single newly-made decision onto an already-derived resume, instead of replaying
+ * the whole plan from the base snapshot. Only valid for a decision on an edit_id that hasn't
+ * been decided before — revising an existing decision must go through deriveResumeLocal, since
+ * there's no way to undo a previously-applied edit from here.
+ */
+export function applyDecisionOnto(current: Resume, plan: Plan, decision: Decision): Resume {
+  const root = structuredClone(current) as unknown as JsonRecord;
+  const edit = plan.edits.find((item) => item.edit_id === decision.edit_id);
+  if (!edit) throw new Error(`Unknown edit ${decision.edit_id}`);
+  if (decision.decision !== "rejected") apply(root, edit, decision);
+  return root as unknown as Resume;
+}

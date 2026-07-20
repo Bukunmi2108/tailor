@@ -153,6 +153,7 @@ export function ReviewDeck({
   const [custom, setCustom] = useState(proposedText);
   const decision = decisions.find((item) => item.edit_id === edit?.edit_id);
   const complete = decisions.length >= plan.edits.length;
+  const editAtomLabel = useMemo(() => (edit ? atomLabel(edit, resume) : ""), [edit, resume]);
   const counts = useMemo(
     () => ({
       approved: decisions.filter((item) => item.decision === "approved").length,
@@ -224,7 +225,7 @@ export function ReviewDeck({
           <div className="review-card-shadow second" />
           <article className="review-card">
             <div className="review-card__meta">
-              <span>{atomLabel(edit, resume)}</span>
+              <span>{editAtomLabel}</span>
               {edit.risk === "review" && <em>Check claim</em>}
             </div>
             <h2>{edit.rationale}</h2>

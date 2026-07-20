@@ -14,7 +14,7 @@ import {
 import { api, download, token } from "./api";
 import { applyServerEvent, connectChat, stopAssistantMessage } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
-import { deriveResumeLocal } from "./edit-engine";
+import { applyDecisionOnto, deriveResumeLocal } from "./edit-engine";
 import { ReviewDeck } from "./review-deck";
 import type {
   BaseVersion,
@@ -645,7 +645,10 @@ function App() {
                   return;
                 }
                 try {
-                  const nextResume = deriveResumeLocal(planBase, reviewPart.plan, nextDecisions);
+                  const isNewDecision = !reviewPart.decisions.some((item) => item.edit_id === decision.edit_id);
+                  const nextResume = isNewDecision && workingResumeRef.current
+                    ? applyDecisionOnto(workingResumeRef.current, reviewPart.plan, decision)
+                    : deriveResumeLocal(planBase, reviewPart.plan, nextDecisions);
                   workingResumeRef.current = nextResume;
                   setWorkingResume(nextResume);
                   const patched = patchPreview(
