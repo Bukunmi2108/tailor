@@ -133,19 +133,67 @@ export type CoverLetter = {
   signoff: string;
   name: string;
 };
+export type MessagePart =
+  | { id: string; type: "reasoning" | "text"; text: string; status?: "streaming" | "complete" }
+  | {
+      id: string;
+      type: "tool";
+      tool: string;
+      status: "running" | "complete";
+      input?: Record<string, unknown>;
+      output?: Record<string, unknown>;
+    }
+  | { id: string; type: "analysis"; analysis: Analysis }
+  | { id: string; type: "edits_proposed"; plan: Plan; decisions: Decision[] }
+  | { id: string; type: "cover_letter"; coverLetter: CoverLetter }
+  | { id: string; type: "model"; provider: string; model: string; fallback?: boolean; reason?: string };
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content?: string;
+  parts?: MessagePart[];
+  createdAt: string;
+  status?: "streaming" | "complete" | "error";
+};
+
+type EventBase = { event_id: string; sequence: number; timestamp: string };
+export type ServerEvent = EventBase &
+  (
+    | { type: "session.started" }
+    | { type: "agent.started" }
+    | { type: "model.selected"; provider: string; model: string; url: string; latency_ms?: number }
+    | {
+        type: "model.fallback";
+        provider: string;
+        model: string;
+        url: string;
+        reason?: string;
+        latency_ms?: number;
+      }
+    | { type: "tool.started"; tool: string; input?: Record<string, unknown> }
+    | { type: "tool.result"; tool: string; output?: Record<string, unknown> }
+    | { type: "reasoning.delta"; text: string }
+    | { type: "message.delta"; text: string }
+    | { type: "analysis.completed"; analysis: Analysis }
+    | { type: "edits.proposed"; plan: Plan }
+    | { type: "cover_letter.drafted"; cover_letter: CoverLetter }
+    | { type: "message.completed"; text: string; message_history: unknown[] }
+    | { type: "session.completed" }
+    | { type: "error"; code?: string; message: string }
+  );
+
 export type Session = {
   sessionId: string;
   baseVersionId: string;
   activeRevisionId: string;
   templateVersion: string;
-  jdRaw: string;
-  analysis?: Analysis;
-  plan?: Plan;
-  decisions: Decision[];
+  messages: ChatMessage[];
+  messageHistory: unknown[];
+  currentAnalysis?: Analysis;
   coverLetter?: CoverLetter;
   company?: string;
   roleTitle?: string;
-  status: "draft" | "ready" | "archived";
   createdAt: string;
   updatedAt: string;
 };

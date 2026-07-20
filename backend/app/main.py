@@ -7,6 +7,7 @@ from .api import router
 from .canon import load_canon
 from .config import get_settings
 from .rendering import environment
+from .websocket.chat import router as chat_router
 
 
 @asynccontextmanager
@@ -28,6 +29,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Page-Count", "X-Content-Hash"],
 )
 app.include_router(router)
+app.include_router(chat_router)
 
 
 @app.get("/healthz")

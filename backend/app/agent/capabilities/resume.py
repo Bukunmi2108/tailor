@@ -54,6 +54,7 @@ class ResumeTools(AbstractCapability[AgentDeps]):
             limit: int = 8,
         ) -> ResumeSearchResult:
             """Search verified resume atoms by words, tags, labels, and IDs."""
+            await ctx.deps.events.send("tool.started", tool="search_resume", input={"query": query})
             terms = {term.casefold() for term in query.split() if term.strip()}
             scored: list[tuple[int, ResumeAtom]] = []
             for atom in _resume_atoms(ctx.deps.resume):
@@ -63,30 +64,52 @@ class ResumeTools(AbstractCapability[AgentDeps]):
                     scored.append((score, atom))
             scored.sort(key=lambda item: (-item[0], item[1].id))
             cap = max(1, min(limit, self.max_results))
-            return ResumeSearchResult(query=query, matches=[atom for _, atom in scored[:cap]])
+            result = ResumeSearchResult(query=query, matches=[atom for _, atom in scored[:cap]])
+            await ctx.deps.events.send(
+                "tool.result", tool="search_resume", output={"match_count": len(result.matches)}
+            )
+            return result
 
         @toolset.tool(name="inspect_resume_evidence", strict=False)
         async def inspect_resume_evidence(
             ctx: RunContext[AgentDeps], evidence_ids: list[str]
         ) -> EvidenceResult:
             """Load exact verified resume atoms for evidence IDs."""
+            await ctx.deps.events.send(
+                "tool.started", tool="inspect_resume_evidence", input={"evidence_ids": evidence_ids}
+            )
             by_id = {atom.id: atom for atom in _resume_atoms(ctx.deps.resume)}
-            return EvidenceResult(
+            result = EvidenceResult(
                 found=[by_id[item] for item in evidence_ids if item in by_id],
                 missing_ids=[item for item in evidence_ids if item not in by_id],
             )
+            await ctx.deps.events.send(
+                "tool.result",
+                tool="inspect_resume_evidence",
+                output={"found": len(result.found), "missing": len(result.missing_ids)},
+            )
+            return result
 
         @toolset.tool(name="inspect_job_requirements", strict=False)
         async def inspect_job_requirements(
             ctx: RunContext[AgentDeps], requirement_ids: list[str]
         ) -> RequirementResult:
             """Load corrected job requirements by their stable IDs."""
+            await ctx.deps.events.send(
+                "tool.started", tool="inspect_job_requirements", input={"requirement_ids": requirement_ids}
+            )
             requirements = ctx.deps.analysis.requirements if ctx.deps.analysis else []
             by_id = {item.requirement_id: item for item in requirements}
-            return RequirementResult(
+            result = RequirementResult(
                 found=[by_id[item].model_dump(mode="json") for item in requirement_ids if item in by_id],
                 missing_ids=[item for item in requirement_ids if item not in by_id],
             )
+            await ctx.deps.events.send(
+                "tool.result",
+                tool="inspect_job_requirements",
+                output={"found": len(result.found), "missing": len(result.missing_ids)},
+            )
+            return result
 
         return toolset
 

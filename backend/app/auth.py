@@ -66,6 +66,23 @@ def authenticate(request: Request, payload: LoginRequest, settings: Settings) ->
     return LoginResponse(access_token=token, expires_at=expires)
 
 
+def verify_token(token: str, settings: Settings) -> str:
+    try:
+        claims = jwt.decode(
+            token,
+            settings.auth_signing_secret,
+            algorithms=["HS256"],
+            audience="tailor-api",
+        )
+    except jwt.PyJWTError as exc:
+        raise InvalidToken("Invalid or expired token") from exc
+    return str(claims["sub"])
+
+
+class InvalidToken(ValueError):
+    pass
+
+
 def require_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     settings: Settings = Depends(get_settings),
@@ -73,14 +90,6 @@ def require_auth(
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     try:
-        claims = jwt.decode(
-            credentials.credentials,
-            settings.auth_signing_secret,
-            algorithms=["HS256"],
-            audience="tailor-api",
-        )
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
-        ) from None
-    return str(claims["sub"])
+        return verify_token(credentials.credentials, settings)
+    except InvalidToken as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc

@@ -3,6 +3,7 @@ import type { Backup, BaseVersion, Revision, Session } from "./types";
 const NAME = "tailor";
 const VERSION = 1;
 type Store = "base_versions" | "sessions" | "resume_revisions" | "app_metadata";
+const ACTIVE_SESSION_KEY = "activeSessionId";
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
@@ -71,8 +72,6 @@ async function put<T>(store: Store, value: T) {
 export const db = {
   getSession: (id: string) => read<Session>("sessions", id),
   getRevision: (id: string) => read<Revision>("resume_revisions", id),
-  sessions: () => all<Session>("sessions"),
-  revisions: () => all<Revision>("resume_revisions"),
   bases: () => all<BaseVersion>("base_versions"),
   async sessionRevisions(id: string): Promise<Revision[]> {
     const database = await openDb();
@@ -89,16 +88,9 @@ export const db = {
   putBase: (base: BaseVersion) => put("base_versions", base),
   putSession: (session: Session) => put("sessions", session),
   putRevision: (revision: Revision) => put("resume_revisions", revision),
-  async saveRevision(
-    session: Session,
-    revision: Revision,
-    expectedActive: string,
-  ) {
+  async saveRevision(session: Session, revision: Revision, expectedActive: string) {
     const database = await openDb();
-    const tx = database.transaction(
-      ["sessions", "resume_revisions"],
-      "readwrite",
-    );
+    const tx = database.transaction(["sessions", "resume_revisions"], "readwrite");
     const sessions = tx.objectStore("sessions");
     const current = await new Promise<Session>((resolve, reject) => {
       const req = sessions.get(session.sessionId);
@@ -107,55 +99,68 @@ export const db = {
     });
     if (current.activeRevisionId !== expectedActive) {
       tx.abort();
-      throw new Error(
-        "This session changed in another tab. Reload before saving.",
-      );
+      throw new Error("This session changed in another tab. Reload before saving.");
     }
     tx.objectStore("resume_revisions").put(revision);
     sessions.put(session);
     await done(tx);
   },
-  async removeSession(id: string) {
+  async getActiveSession(): Promise<Session | undefined> {
+    const pointer = await read<{ key: string; sessionId: string }>("app_metadata", ACTIVE_SESSION_KEY);
+    if (!pointer) return undefined;
+    return db.getSession(pointer.sessionId);
+  },
+  async setActiveSession(sessionId: string) {
+    await put("app_metadata", { key: ACTIVE_SESSION_KEY, sessionId });
+  },
+  /** Replace the single active session and its opening revision, discarding any prior session's data. */
+  async replaceActiveSession(session: Session, revision: Revision) {
+    const previous = await db.getActiveSession();
     const database = await openDb();
-    const tx = database.transaction(
-      ["sessions", "resume_revisions"],
-      "readwrite",
-    );
-    tx.objectStore("sessions").delete(id);
-    const index = tx.objectStore("resume_revisions").index("sessionId");
-    const request = index.openCursor(IDBKeyRange.only(id));
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (cursor) {
-        cursor.delete();
-        cursor.continue();
-      }
-    };
+    const tx = database.transaction(["sessions", "resume_revisions", "app_metadata"], "readwrite");
+    if (previous && previous.sessionId !== session.sessionId) {
+      tx.objectStore("sessions").delete(previous.sessionId);
+      const cursorRequest = tx
+        .objectStore("resume_revisions")
+        .index("sessionId")
+        .openCursor(IDBKeyRange.only(previous.sessionId));
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+    }
+    tx.objectStore("sessions").put(session);
+    tx.objectStore("resume_revisions").put(revision);
+    tx.objectStore("app_metadata").put({ key: ACTIVE_SESSION_KEY, sessionId: session.sessionId });
     await done(tx);
   },
   async backup(): Promise<Backup> {
+    const active = await db.getActiveSession();
     return {
       format: "tailor-backup",
       version: 1,
       exportedAt: new Date().toISOString(),
-      baseVersions: await this.bases(),
-      sessions: await this.sessions(),
-      revisions: await this.revisions(),
+      baseVersions: await db.bases(),
+      sessions: active ? [active] : [],
+      revisions: active ? await db.sessionRevisions(active.sessionId) : [],
     };
   },
   async restore(backup: Backup) {
     if (backup.format !== "tailor-backup" || backup.version !== 1)
       throw new Error("Unsupported backup file");
-    for (const base of backup.baseVersions) await this.putBase(base);
-    for (const session of backup.sessions) await this.putSession(session);
-    for (const revision of backup.revisions) await this.putRevision(revision);
+    for (const base of backup.baseVersions) await db.putBase(base);
+    for (const session of backup.sessions) {
+      await db.putSession(session);
+      await db.setActiveSession(session.sessionId);
+    }
+    for (const revision of backup.revisions) await db.putRevision(revision);
   },
 };
 
-export async function withSessionLock<T>(
-  id: string,
-  work: () => Promise<T>,
-): Promise<T> {
+export async function withSessionLock<T>(id: string, work: () => Promise<T>): Promise<T> {
   if (navigator.locks) return navigator.locks.request(`tailor:${id}`, work);
   return work();
 }

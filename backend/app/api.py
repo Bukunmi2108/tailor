@@ -7,22 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from .agents import (
-    AnalyzeRequest,
-    CoverParagraphRequest,
-    CoverRequest,
-    PlanRequest,
-    analyze,
-    cover,
-    plan,
-    revise_paragraph,
-)
 from .auth import LoginRequest, LoginResponse, authenticate, require_auth
 from .canon import canon_payload, serialize_resume
 from .config import Settings, get_settings
-from .engine import EditConflict, derive_resume, validate_cover_evidence
+from .engine import EditConflict, derive_resume
 from .models import CoverLetter, EditDecision, ResumeData, TailorPlan
-from .provider import AllModelsFailed, endpoints
+from .provider import endpoints
 from .rendering import pdf_from_html, render_cover, render_resume
 from .util import content_hash, safe_slug
 
@@ -117,24 +107,6 @@ def serialize_yaml(payload: SnapshotRequest):
     )
 
 
-@router.post("/agent/analyze", dependencies=[Depends(require_auth)])
-async def analyze_route(payload: AnalyzeRequest, settings: Settings = Depends(get_settings)):
-    try:
-        analysis, model = await analyze(payload, settings)
-        return {"analysis": analysis, "model_id": model}
-    except AllModelsFailed as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post("/agent/plan", dependencies=[Depends(require_auth)])
-async def plan_route(payload: PlanRequest, settings: Settings = Depends(get_settings)):
-    try:
-        result, model = await plan(payload, settings)
-        return {"plan": result, "model_id": model}
-    except (AllModelsFailed, ValueError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
 @router.post("/resume/derive", dependencies=[Depends(require_auth)])
 def derive_route(payload: DeriveRequest):
     try:
@@ -160,26 +132,6 @@ def cover_preview(payload: CoverPreviewRequest):
         return Response(render_cover(payload.cover_letter, payload.template_version), media_type="text/html")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/agent/cover-letter", dependencies=[Depends(require_auth)])
-async def cover_route(payload: CoverRequest, settings: Settings = Depends(get_settings)):
-    try:
-        letter, model = await cover(payload, settings)
-        validate_cover_evidence(letter, payload.resume)
-        return {"cover_letter": letter, "model_id": model}
-    except (AllModelsFailed, EditConflict) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post("/agent/cover-paragraph", dependencies=[Depends(require_auth)])
-async def paragraph_route(payload: CoverParagraphRequest, settings: Settings = Depends(get_settings)):
-    try:
-        letter, model = await revise_paragraph(payload, settings)
-        validate_cover_evidence(letter, payload.resume)
-        return {"cover_letter": letter, "model_id": model}
-    except (AllModelsFailed, EditConflict) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 def _pdf_response(pdf: bytes, pages: int, digest: str, filename: str) -> Response:

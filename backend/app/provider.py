@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from typing import cast
 
 from openai import AsyncOpenAI
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UnexpectedModelBehavior
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from .agent.model_trace import ModelProviderInfo, TracedModel
 from .config import Settings
 
 MODELSCOPE_PROFILE = cast(
@@ -35,6 +36,7 @@ LLAMA_CPP_PROFILE = cast(
 
 @dataclass(frozen=True)
 class ModelEndpoint:
+    label: str
     model: str
     base_url: str
     api_key: str
@@ -51,12 +53,14 @@ def endpoints(settings: Settings) -> list[ModelEndpoint]:
         configured.extend(
             [
                 ModelEndpoint(
+                    "primary",
                     settings.primary_model_name,
                     settings.modelscope_base_url,
                     settings.modelscope_api_token,
                     MODELSCOPE_PROFILE,
                 ),
                 ModelEndpoint(
+                    "secondary",
                     settings.secondary_model_name,
                     settings.modelscope_base_url,
                     settings.modelscope_api_token,
@@ -67,6 +71,7 @@ def endpoints(settings: Settings) -> list[ModelEndpoint]:
     if settings.fallback_model_enabled:
         configured.append(
             ModelEndpoint(
+                "fallback",
                 settings.fallback_model_name,
                 settings.fallback_model_base_url,
                 settings.fallback_model_api_key,
@@ -97,11 +102,22 @@ def _should_fallback(exc: Exception) -> bool:
         if any(marker in body for marker in ("quota", "rate limit", "too many", "insufficient_quota")):
             return True
         return exc.status_code in {408, 429, 500, 502, 503, 504}
+    if isinstance(exc, UnexpectedModelBehavior):
+        # Covers malformed or empty provider responses (e.g. ModelScope intermittently
+        # returning no choices) that aren't wrapped in a ModelHTTPError.
+        return True
     return isinstance(exc, ModelAPIError)
 
 
-def build_model(settings: Settings) -> OpenAIChatModel | FallbackModel:
-    models = [_openai_model(endpoint, settings) for endpoint in endpoints(settings)]
+def build_model(settings: Settings) -> OpenAIChatModel | TracedModel | FallbackModel:
+    resolved = endpoints(settings)
+    models: list[OpenAIChatModel | TracedModel] = [
+        TracedModel(
+            _openai_model(endpoint, settings),
+            ModelProviderInfo(provider=endpoint.label, model=endpoint.model, url=endpoint.base_url),
+        )
+        for endpoint in resolved
+    ]
     if not models:
         raise AllModelsFailed("No model endpoint is configured")
     if len(models) == 1:
