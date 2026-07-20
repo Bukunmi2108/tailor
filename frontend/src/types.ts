@@ -143,7 +143,6 @@ export type MessagePart =
       input?: Record<string, unknown>;
       output?: Record<string, unknown>;
     }
-  | { id: string; type: "analysis"; analysis: Analysis }
   | { id: string; type: "edits_proposed"; plan: Plan; decisions: Decision[] }
   | { id: string; type: "cover_letter"; coverLetter: CoverLetter }
   | { id: string; type: "model"; provider: string; model: string; fallback?: boolean; reason?: string };

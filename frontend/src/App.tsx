@@ -7,7 +7,9 @@ import {
   FloppyDisk,
   LockKey,
   PaperPlaneTilt,
+  Plus,
   SignOut,
+  DotsThree,
   UploadSimple,
   Warning,
 } from "@phosphor-icons/react";
@@ -16,7 +18,6 @@ import { applyServerEvent, connectChat } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
 import { db, withSessionLock } from "./db";
 import type {
-  Analysis,
   BaseVersion,
   Backup,
   ChatMessage,
@@ -259,19 +260,6 @@ function App() {
       persistSessionPatch({}, next);
       void applyPlanDecisions(part.plan, nextDecisions);
     },
-    onAnalysisChange: (messageId, partId, analysis: Analysis) => {
-      const next = updateMessagePart(messageId, partId, (p) =>
-        p.type === "analysis" ? { ...p, analysis } : p,
-      );
-      persistSessionPatch(
-        {
-          currentAnalysis: analysis,
-          company: analysis.company || sessionRef.current?.company,
-          roleTitle: analysis.role_title || sessionRef.current?.roleTitle,
-        },
-        next,
-      );
-    },
     onCoverLetterChange: (messageId, partId, coverLetter: CoverLetter) => {
       const next = updateMessagePart(messageId, partId, (p) =>
         p.type === "cover_letter" ? { ...p, coverLetter } : p,
@@ -347,7 +335,13 @@ function App() {
       (event) => {
         transcript = applyServerEvent(transcript, assistantId, event);
         setMessages(transcript);
-        if (event.type === "message.completed") {
+        if (event.type === "analysis.completed") {
+          persistSessionPatch({
+            currentAnalysis: event.analysis,
+            company: event.analysis.company || sessionRef.current?.company,
+            roleTitle: event.analysis.role_title || sessionRef.current?.roleTitle,
+          });
+        } else if (event.type === "message.completed") {
           persistSessionPatch({ messageHistory: event.message_history }, transcript);
         } else if (event.type === "error") {
           setError(event.message);
@@ -435,40 +429,40 @@ function App() {
     }
   }
 
+  async function startFresh() {
+    if (!sessionRef.current && messagesRef.current.length === 0) {
+      draftRef.current?.focus();
+      return;
+    }
+    if (!confirm("Start a fresh tailoring session? Your current session will remain saved in this browser."))
+      return;
+
+    socketRef.current?.close();
+    clearTimeout(persistTimer.current);
+    const current = sessionRef.current;
+    if (current) {
+      await db.putSession({
+        ...current,
+        activeRevisionId: revisionRef.current?.revisionId ?? current.activeRevisionId,
+        messages: messagesRef.current,
+        updatedAt: now(),
+      });
+    }
+    await db.clearActiveSession();
+    setSession(undefined);
+    setRevision(undefined);
+    setMessages([]);
+    setDraft("");
+    setPreview("resume");
+    setPreviewHtml("");
+    setError("");
+    setSaveState("saved");
+    requestAnimationFrame(() => draftRef.current?.focus());
+  }
+
   if (!authenticated) return <Login onDone={() => setAuthenticated(true)} />;
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="wordmark">
-          tailor<span>.</span>
-        </div>
-        <div className="top-actions">
-          <span className={`save-state ${saveState}`}>{saveState}</span>
-          <button className="icon-button" title="Export backup" onClick={backup}>
-            <FloppyDisk />
-          </button>
-          <button className="icon-button" title="Import backup" onClick={() => importRef.current?.click()}>
-            <UploadSimple />
-          </button>
-          <input
-            ref={importRef}
-            hidden
-            type="file"
-            accept="application/json"
-            onChange={(e) => restore(e.target.files?.[0])}
-          />
-          <button
-            className="icon-button"
-            title="Log out"
-            onClick={() => {
-              token.clear();
-              setAuthenticated(false);
-            }}
-          >
-            <SignOut />
-          </button>
-        </div>
-      </header>
       {error && (
         <div className="error-banner" role="alert">
           <Warning weight="fill" />
@@ -478,6 +472,40 @@ function App() {
       )}
       <main className="workspace">
         <section className="control-pane">
+          <div className="utility-bar">
+            <div className="wordmark">
+              tailor<span>.</span>
+            </div>
+            <div className="utility-actions">
+              <button className="icon-button new-session" title="New session" onClick={() => void startFresh()}>
+                <Plus weight="bold" />
+              </button>
+              <details className="utility-menu">
+                <summary className="icon-button" title="More options" aria-label="More options">
+                  <DotsThree weight="bold" />
+                </summary>
+                <div className="utility-menu__panel">
+                  <button onClick={backup}><FloppyDisk /> Export backup</button>
+                  <button onClick={() => importRef.current?.click()}><UploadSimple /> Import backup</button>
+                  <button
+                    onClick={() => {
+                      token.clear();
+                      setAuthenticated(false);
+                    }}
+                  >
+                    <SignOut /> Log out
+                  </button>
+                </div>
+              </details>
+              <input
+                ref={importRef}
+                hidden
+                type="file"
+                accept="application/json"
+                onChange={(e) => restore(e.target.files?.[0])}
+              />
+            </div>
+          </div>
           {messages.length === 0 ? (
             <div className="empty">
               <FileText />
@@ -490,30 +518,33 @@ function App() {
           ) : (
             <ChatThread messages={messages} actions={actions} />
           )}
-          <form
-            className="chat-input"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void sendMessage();
-            }}
-          >
-            <textarea
-              ref={draftRef}
-              rows={1}
-              placeholder="Paste a job description, ask a question, or request a change…"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendMessage();
-                }
+          <div className="composer-area">
+            <form
+              className="chat-input"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendMessage();
               }}
-            />
-            <button type="submit" disabled={connecting || !draft.trim()}>
-              <PaperPlaneTilt />
-            </button>
-          </form>
+            >
+              <textarea
+                ref={draftRef}
+                rows={1}
+                placeholder="Paste a job description, ask a question, or request a change…"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+              />
+              <button type="submit" disabled={connecting || !draft.trim()}>
+                <PaperPlaneTilt />
+              </button>
+            </form>
+            <span className={`save-state ${saveState}`}>{saveState}</span>
+          </div>
         </section>
         <section className="preview-pane">
           <div className="preview-toolbar">

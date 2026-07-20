@@ -10,7 +10,6 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { wordDiff } from "./diff";
 import type {
-  Analysis,
   ChatMessage,
   CoverLetter,
   Decision,
@@ -107,63 +106,6 @@ const EditCard = memo(function EditCard({
     </article>
   );
 });
-
-function AnalysisView({
-  analysis,
-  onChange,
-}: {
-  analysis: Analysis;
-  onChange: (value: Analysis) => void;
-}) {
-  return (
-    <section className="analysis">
-      <div className="analysis-title">
-        <h3>Role analysis</h3>
-        <span>{analysis.seniority}</span>
-      </div>
-      <p>{analysis.summary}</p>
-      <div className="requirements">
-        {analysis.requirements.map((requirement, index) => (
-          <div key={requirement.requirement_id} className="requirement">
-            <select
-              aria-label="Coverage"
-              value={requirement.coverage}
-              onChange={(event) => {
-                const requirements = [...analysis.requirements];
-                requirements[index] = {
-                  ...requirement,
-                  coverage: event.target.value as typeof requirement.coverage,
-                };
-                onChange({ ...analysis, requirements });
-              }}
-            >
-              <option value="covered">Covered</option>
-              <option value="partial">Partial</option>
-              <option value="missing">Missing</option>
-            </select>
-            <textarea
-              aria-label="Requirement"
-              value={requirement.text}
-              onChange={(event) => {
-                const requirements = [...analysis.requirements];
-                requirements[index] = { ...requirement, text: event.target.value };
-                onChange({ ...analysis, requirements });
-              }}
-            />
-          </div>
-        ))}
-      </div>
-      {analysis.red_flags.length > 0 && (
-        <div className="red-flags">
-          <strong>Review before applying</strong>
-          {analysis.red_flags.map((item) => (
-            <p key={item}>{item}</p>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 function CoverEditor({
   letter,
@@ -294,7 +236,6 @@ function groupParts(parts: MessagePart[]): Grouped[] {
 export type ChatActions = {
   onEditDecision: (messageId: string, partId: string, decision: Decision) => void;
   onApproveSafeEdits: (messageId: string, partId: string) => void;
-  onAnalysisChange: (messageId: string, partId: string, analysis: Analysis) => void;
   onCoverLetterChange: (messageId: string, partId: string, coverLetter: CoverLetter) => void;
 };
 
@@ -329,14 +270,6 @@ const MessageBubble = memo(function MessageBubble({
             );
           case "model":
             return <ModelBadge key={part.id} part={part} />;
-          case "analysis":
-            return (
-              <AnalysisView
-                key={part.id}
-                analysis={part.analysis}
-                onChange={(analysis) => actions.onAnalysisChange(message.id, part.id, analysis)}
-              />
-            );
           case "edits_proposed":
             return (
               <section className="proposed-edits" key={part.id}>

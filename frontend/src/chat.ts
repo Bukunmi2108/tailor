@@ -100,11 +100,6 @@ export function applyServerEvent(
       return startTool(messages, assistantId, event.tool, event.input);
     case "tool.result":
       return completeTool(messages, assistantId, event.tool, event.output);
-    case "analysis.completed":
-      return withParts(messages, assistantId, (parts) => [
-        ...parts,
-        { id: partId("analysis"), type: "analysis", analysis: event.analysis },
-      ]);
     case "edits.proposed":
       return withParts(messages, assistantId, (parts) => [
         ...parts,

@@ -68,6 +68,12 @@ async function put<T>(store: Store, value: T) {
   tx.objectStore(store).put(value);
   await done(tx);
 }
+async function remove(store: Store, key: IDBValidKey) {
+  const database = await openDb();
+  const tx = database.transaction(store, "readwrite");
+  tx.objectStore(store).delete(key);
+  await done(tx);
+}
 
 export const db = {
   getSession: (id: string) => read<Session>("sessions", id),
@@ -113,25 +119,13 @@ export const db = {
   async setActiveSession(sessionId: string) {
     await put("app_metadata", { key: ACTIVE_SESSION_KEY, sessionId });
   },
-  /** Replace the single active session and its opening revision, discarding any prior session's data. */
+  async clearActiveSession() {
+    await remove("app_metadata", ACTIVE_SESSION_KEY);
+  },
+  /** Activate a new session while retaining earlier sessions and their revision history. */
   async replaceActiveSession(session: Session, revision: Revision) {
-    const previous = await db.getActiveSession();
     const database = await openDb();
     const tx = database.transaction(["sessions", "resume_revisions", "app_metadata"], "readwrite");
-    if (previous && previous.sessionId !== session.sessionId) {
-      tx.objectStore("sessions").delete(previous.sessionId);
-      const cursorRequest = tx
-        .objectStore("resume_revisions")
-        .index("sessionId")
-        .openCursor(IDBKeyRange.only(previous.sessionId));
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-    }
     tx.objectStore("sessions").put(session);
     tx.objectStore("resume_revisions").put(revision);
     tx.objectStore("app_metadata").put({ key: ACTIVE_SESSION_KEY, sessionId: session.sessionId });
