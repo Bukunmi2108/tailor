@@ -129,12 +129,14 @@ function App() {
   const revisions = useRef(new Map<string, Revision>());
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
-  useEffect(() => {
-    const el = draftRef.current;
+  const resizeDraft = useCallback((el: HTMLTextAreaElement | null) => {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [draft]);
+  }, []);
+  useEffect(() => {
+    resizeDraft(draftRef.current);
+  }, [draft, resizeDraft]);
 
   const boot = useCallback(async () => {
     if (!token.get()) return;
@@ -705,7 +707,10 @@ function App() {
               }}
             >
               <textarea
-                ref={draftRef}
+                ref={(el) => {
+                  draftRef.current = el;
+                  resizeDraft(el);
+                }}
                 rows={1}
                 placeholder="Paste a job description, ask a question, or request a change…"
                 value={draft}
