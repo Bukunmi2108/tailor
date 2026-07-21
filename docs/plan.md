@@ -203,6 +203,8 @@ The repository is public, so its source, Docker configuration, template files, c
 
 The backend image contains application code, canonical assets, and template assets. Runtime session data does not rely on container disk. Caddy, Sablier, and the socket proxy form the always-on workspace control plane; the Tailor container may stop after 24 hours without traffic and wake on the next request.
 
+Shared VPS infrastructure is owned by the private `Bukunmi2108/workspace-infra` repository. This repository owns only the Tailor container definition and exact-revision deployment script. A Tailor deployment must not recreate or restart Caddy, Sablier, PostgreSQL, shared networks, or backup timers.
+
 Required backend configuration:
 
 | Variable | Classification | Purpose |

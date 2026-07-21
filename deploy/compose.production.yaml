@@ -3,12 +3,12 @@ name: tailor
 services:
   backend:
     build:
-      context: ./source/backend
+      context: ${TAILOR_SOURCE_ROOT:-./source}/backend
       dockerfile: Dockerfile
     image: tailor-backend:${TAILOR_IMAGE_TAG:-local}
     container_name: workspace-tailor
     env_file:
-      - ./.env
+      - ${TAILOR_ENV_FILE:-./.env}
     expose:
       - "7860"
     networks:

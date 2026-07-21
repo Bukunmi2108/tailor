@@ -45,14 +45,15 @@ Agent tests do not spend API credit. Provider behavior is tested through validat
 
 The frontend is deployed from `frontend/` on Vercel. The backend runs as a Docker container on the shared Contabo workspace VPS. Caddy terminates HTTPS and Sablier stops the backend after 24 hours without traffic, then starts it on the next request. The gateway and Sablier remain running so cold starts are reachable.
 
-Production infrastructure is declared under `deploy/`:
+Tailor's production deployment is declared under `deploy/`:
 
-- `deploy/workspace/gateway/`: shared Caddy, Sablier, and restricted Docker socket proxy;
-- `deploy/workspace/bin/deploy-tailor`: server-side revision deployment command;
-- `deploy/tailor/compose.yaml`: Tailor backend service, resource limits, health check, and scale-to-zero labels;
+- `deploy/deploy.sh`: server-side exact-revision deployment command;
+- `deploy/compose.production.yaml`: Tailor backend service, resource limits, health check, and scale-to-zero labels;
 - `.github/workflows/pipeline.yml`: backend/frontend CI followed by a gated main-branch VPS deployment.
 
-The VPS keeps the backend environment in `/opt/workspace/apps/tailor/.env`; deployments never overwrite it. `backend/Dockerfile` listens on port 7860 and includes the WeasyPrint dependencies.
+Shared Caddy, Sablier, Docker socket proxy, PostgreSQL, and backup configuration belong to the private `Bukunmi2108/workspace-infra` repository. Tailor assumes that `workspace_gateway` already exists and never deploys or restarts the shared platform.
+
+The VPS keeps the backend environment in `/opt/workspace/apps/tailor/.env`; deployments never overwrite it. Argon2 hashes must be single-quoted in this Compose environment file so their `$` characters remain literal; see `deploy/.env.example`. `backend/Dockerfile` listens on port 7860 and includes the WeasyPrint dependencies.
 
 Required secrets:
 

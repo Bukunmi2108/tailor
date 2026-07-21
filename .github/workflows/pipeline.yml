@@ -55,8 +55,8 @@ jobs:
     steps:
       - name: Configure deployment SSH key
         env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_SSH_KEY: ${{ secrets.CONTABO_VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.CONTABO_VPS_KNOWN_HOSTS }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/tailor_deploy
@@ -65,6 +65,6 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
       - name: Deploy verified revision
         env:
-          VPS_HOST: ${{ vars.VPS_HOST }}
-          VPS_USER: ${{ vars.VPS_USER }}
-        run: ssh -i ~/.ssh/tailor_deploy "$VPS_USER@$VPS_HOST" /opt/workspace/bin/deploy-tailor "$GITHUB_SHA"
+          VPS_HOST: ${{ vars.CONTABO_VPS_HOST }}
+          VPS_USER: ${{ vars.CONTABO_VPS_USER }}
+        run: ssh -i ~/.ssh/tailor_deploy "$VPS_USER@$VPS_HOST" /opt/workspace/apps/tailor/deploy "$GITHUB_SHA"
