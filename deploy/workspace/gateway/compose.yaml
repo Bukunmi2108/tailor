@@ -1,0 +1,74 @@
+name: workspace-gateway
+
+services:
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: workspace-socket-proxy
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      VERSION: "1"
+      POST: "1"
+      AUTH: "0"
+      SECRETS: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket_proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  sablier:
+    image: sablierapp/sablier:1.15.0
+    container_name: workspace-sablier
+    command:
+      - start
+      - --provider.name=docker
+      - --sessions.default-duration=24h
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+    depends_on:
+      - socket-proxy
+    networks:
+      - socket_proxy
+      - gateway
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: workspace-caddy:2.11.2-sablier-1.0.2
+    container_name: workspace-caddy
+    environment:
+      TAILOR_HOST: ${TAILOR_HOST:-http://169.58.55.160}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - gateway
+    depends_on:
+      - sablier
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  gateway:
+    name: workspace_gateway
+    external: true
+  socket_proxy:
+    name: workspace_socket_proxy
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:

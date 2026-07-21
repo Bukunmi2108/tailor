@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly REVISION="${1:?usage: deploy-tailor <git-revision>}"
+readonly APP_ROOT=/opt/workspace/apps/tailor
+readonly SOURCE_ROOT="$APP_ROOT/source"
+readonly REPOSITORY=https://github.com/Bukunmi2108/tailor.git
+
+mkdir -p "$APP_ROOT"
+if [[ ! -d "$SOURCE_ROOT/.git" ]]; then
+  git clone "$REPOSITORY" "$SOURCE_ROOT"
+fi
+
+git -C "$SOURCE_ROOT" fetch --prune origin
+git -C "$SOURCE_ROOT" checkout --detach "$REVISION"
+
+TAILOR_IMAGE_TAG="$REVISION" docker compose \
+  --project-directory "$APP_ROOT" \
+  -f "$SOURCE_ROOT/deploy/tailor/compose.yaml" \
+  up -d --build --remove-orphans
+
+docker image prune -f --filter "until=168h"

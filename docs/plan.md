@@ -2,10 +2,10 @@
 
 **Project codename:** `tailor`  
 **Author:** Bukunmi Akinyemi  
-**Status:** Design baseline — v1.1  
-**Last updated:** 2026-07-20  
+**Status:** Implemented baseline — v1.2
+**Last updated:** 2026-07-21
 **Starting artifact:** `C:\Users\BUNKUNMI\Downloads\resume0726.pdf`  
-**Deployment:** Vercel frontend, Hugging Face Spaces backend  
+**Deployment:** Vercel frontend, Docker backend on a shared Contabo workspace VPS
 **Model provider:** ModelScope API Inference
 
 ## 1. Executive Summary
@@ -33,7 +33,7 @@ Build a dependable resume-tailoring workflow that:
 - provides a fast browser preview without repeatedly generating PDFs;
 - produces a matching cover letter grounded in resume evidence;
 - tracks every meaningful revision during the active tab session;
-- works with a Vercel-hosted React frontend and a FastAPI backend on Hugging Face Spaces;
+- works with a Vercel-hosted React frontend and a containerized FastAPI backend on the workspace VPS;
 - uses a ModelScope API token without exposing it to the browser;
 - does not require a Git push for normal use.
 
@@ -93,7 +93,7 @@ PDF generation occurs only when explicitly requested or when a final-layout conf
 - A hard one-page, two-page, or three-page limit.
 - Automatic promotion of tailored content into the canonical resume.
 - Allowing the model to edit template or repository files.
-- Running a local language model on the Hugging Face Space.
+- Running a local language model inside the Tailor backend container.
 
 ## 5. Starting Artifacts and Repository Sources
 
@@ -142,7 +142,7 @@ The starting PDF is three A4 pages and uses Times New Roman with limited Arial u
                            │ authenticated application requests
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Hugging Face Space — Docker SDK                            │
+│ Contabo workspace VPS — Docker                             │
 │ FastAPI backend                                             │
 │                                                            │
 │ Pydantic AI agents · resume tools · edit validation         │
@@ -158,7 +158,7 @@ The starting PDF is three A4 pages and uses Times New Roman with limited Arial u
 └──────────────────────────┘
 ```
 
-The Vercel application never receives the ModelScope token. All model calls originate from the Hugging Face Space. The open frontend tab owns the disposable active session; the backend does not retain session state between requests.
+The Vercel application never receives the ModelScope token. All model calls originate from the Tailor backend container. The open frontend tab owns the disposable active session; the backend does not retain session state between requests.
 
 ## 7. Deployment Architecture
 
@@ -177,30 +177,31 @@ Responsibilities:
 
 Configuration:
 
-- `VITE_API_BASE_URL` identifies the Hugging Face Space origin.
+- `VITE_API_BASE_URL` identifies the HTTPS DuckDNS backend origin.
 - Only non-secret values may use `VITE_` variables because Vite exposes them to client code.
 
 Recommended request path:
 
 ```text
-Browser on Vercel → direct HTTPS request → HF Space
+Browser on Vercel → HTTPS → Caddy/Sablier → Tailor backend
 ```
 
-The backend allows only the configured Vercel production and preview origins through CORS. The public Space URL is not secret; ModelScope and authentication secrets remain backend-only.
+The backend allows only the configured Vercel production and preview origins through HTTP CORS and WebSocket Origin validation. The public backend URL is not secret; ModelScope and authentication secrets remain backend-only.
 
-### 7.2 Backend on Hugging Face Spaces
+### 7.2 Backend on the workspace VPS
 
-Use a Docker Space because the backend requires:
+Use the existing backend Docker image because the backend requires:
 
 - FastAPI;
 - system packages needed by WeasyPrint;
 - embedded fonts;
 - control of the runtime entrypoint;
 - a predictable stateless runtime for model, validation, rendering, and export requests.
+- enough control to run WeasyPrint and support scale-to-zero cold starts.
 
-The version 1 Space is public. Its repository source, Docker configuration, template files, canonical YAML, and reference PDF are therefore publicly readable. This is an accepted deployment tradeoff. ModelScope credentials, passphrase hash, and token-signing secret remain private in Hugging Face Space Secrets. Tailor's application authentication protects API use and quota consumption; it does not make files committed to a public Space repository private.
+The repository is public, so its source, Docker configuration, template files, canonical YAML, and reference PDF are publicly readable. ModelScope credentials, passphrase hash, and token-signing secret live only in `/opt/workspace/apps/tailor/.env` on the VPS. Tailor's application authentication protects API use and quota consumption; it does not make repository files private.
 
-The backend image contains application code, canonical assets, and template assets. Runtime session data must not rely on the Space's default filesystem because ordinary Space disk is ephemeral and can be lost on restart or rebuild.
+The backend image contains application code, canonical assets, and template assets. Runtime session data does not rely on container disk. Caddy, Sablier, and the socket proxy form the always-on workspace control plane; the Tailor container may stop after 24 hours without traffic and wake on the next request.
 
 Required backend configuration:
 
@@ -219,7 +220,7 @@ Required backend configuration:
 | `AUTH_SIGNING_SECRET` | Secret | Sign and verify short-lived access tokens |
 | `AUTH_TOKEN_TTL_HOURS` | Variable | Access-token lifetime, initially 8–12 hours |
 
-The ModelScope token is configured through Hugging Face Space Secrets and is never committed to Git.
+The ModelScope token is configured in the mode-0600 VPS environment file and is never committed to Git or passed through GitHub Actions.
 
 ### 7.3 Stateless backend and ephemeral frontend state
 
@@ -231,11 +232,11 @@ The frontend holds the active job description, analysis, plan, decisions, resume
 
 Although the product is single-user and stateless, its ModelScope-backed routes must not be available for unrestricted public use.
 
-The backend stores an Argon2id passphrase hash and an independent token-signing secret in Hugging Face Space Secrets. The frontend displays a custom passphrase dialog and sends the passphrase once over HTTPS to `POST /api/auth/login`. After successful constant-time verification, the backend returns a short-lived signed bearer token.
+The backend stores an Argon2id passphrase hash and an independent token-signing secret in its protected VPS environment file. The frontend displays a custom passphrase dialog and sends the passphrase once over HTTPS to `POST /api/auth/login`. After successful constant-time verification, the backend returns a short-lived signed bearer token.
 
 The frontend stores the token in `sessionStorage`, not durable application storage, and sends it as an `Authorization: Bearer` header on protected requests. Closing the tab, logging out, or token expiry requires authentication again. The reusable passphrase is never stored by the frontend after the login request completes.
 
-The backend remains stateless: it verifies the token signature and expiry without a session database. Login attempts use an in-memory, best-effort rate limiter, authentication failures are generic, allowed frontend origins are explicit, and authorization headers are never logged. The limiter may reset when the stateless Space restarts, which is acceptable for the single-user v1 deployment. Health, readiness, login, and an allowlisted non-sensitive public-configuration route are public; every other route requires authentication.
+The backend remains stateless: it verifies the token signature and expiry without a session database. Login attempts use an in-memory, best-effort rate limiter, authentication failures are generic, allowed frontend origins are explicit, and authorization headers are never logged. The limiter may reset when the container restarts, which is acceptable for the single-user v1 deployment. Health, readiness, login, and an allowlisted non-sensitive public-configuration route are public; every other route requires authentication.
 
 ## 8. ModelScope Agent Integration
 
@@ -329,7 +330,7 @@ The backend never applies raw model prose as an edit plan. Pydantic AI validates
 
 ### 9.1 Canonical YAML
 
-`backend/canon/resume.yaml` is the repository-tracked operational base resume. Every addressable content item has a permanent stable ID. The deployed application reads this base but never writes into the Space checkout.
+`backend/canon/resume.yaml` is the repository-tracked operational base resume. Every addressable content item has a permanent stable ID. The deployed application reads this base but never writes into the deployment checkout.
 
 Representative structure:
 
@@ -454,7 +455,7 @@ The template preserves the reference resume's:
 
 ### 10.2 Font strategy
 
-The reference PDF uses Times New Roman regular, bold, and italic faces, with limited Arial usage. Because the Hugging Face Space repository is public, Microsoft font files are not copied from Windows or extracted from the subset fonts embedded in the PDF.
+The reference PDF uses Times New Roman regular, bold, and italic faces, with limited Arial usage. Because the repository is public, Microsoft font files are not copied from Windows or extracted from the subset fonts embedded in the PDF.
 
 The template bundles:
 
@@ -1144,7 +1145,7 @@ Playwright scenarios:
 9. Start a new session and confirm the prior workspace is cleared.
 10. Refresh and confirm the application returns to a blank workspace.
 
-Deployment smoke tests verify direct Vercel-to-Space requests, CORS behavior, ephemeral reset behavior, secret presence, provider availability, and export dependencies.
+Deployment smoke tests verify direct Vercel-to-VPS requests, CORS and WebSocket Origin behavior, cold start, ephemeral reset behavior, secret presence, provider availability, and export dependencies.
 
 ## 24. Observability
 
@@ -1191,15 +1192,15 @@ Deliverables:
 - confirm ModelScope endpoint and candidate model IDs with the user's token configured outside Git;
 - test structured output with representative schemas;
 - confirm refresh and reset intentionally clear the frontend workspace;
-- confirm Vercel-to-Space authentication and routing approach;
+- confirm Vercel-to-VPS authentication and routing approach;
 - benchmark browser HTML render and WeasyPrint export.
 
 Exit criteria:
 
 - at least one ModelScope model reliably returns valid test structures;
-- an open browser tab remains usable across Space restarts after retry;
+- an open browser tab remains usable across backend cold starts and restarts after retry;
 - the Vercel deployment can securely call the backend;
-- WeasyPrint works in the Docker Space image.
+- WeasyPrint works in the production Docker image.
 
 ### Phase 1 — Canonical resume and template
 
@@ -1356,13 +1357,13 @@ The following decisions are accepted for version 1:
 13. Model IDs remain configurable and the two ModelScope candidates are compared through tailoring evaluations.
 14. Structured output uses Pydantic AI `PromptedOutput`, Pydantic validation, one bounded repair request, and `FallbackModel`; native provider JSON Schema is optional only after model-specific verification.
 15. The ModelScope token exists only in backend secrets.
-16. Vercel hosts the frontend and a Docker Hugging Face Space hosts the backend.
+16. Vercel hosts the frontend and the workspace VPS hosts the Docker backend behind Caddy and Sablier.
 17. The backend is stateless; no durable Space volume or backend database is required for version 1.
 18. PDFs are returned directly for download and are not archived by the backend.
 19. Tailor intentionally provides no application-state persistence, history archive, or backup/import flow in version 1.
 20. Authentication uses a custom passphrase dialog, an Argon2id hash in backend secrets, and a short-lived signed bearer token stored in browser `sessionStorage`.
 21. The backend verifies tokens statelessly; no Vercel Function or authentication database is required.
-22. The Hugging Face Docker Space is public and protected by Tailor's application authentication; repository-tracked source and canonical assets are accepted as publicly readable.
+22. The GitHub repository is public and the backend is protected by Tailor's application authentication; repository-tracked source and canonical assets are accepted as publicly readable.
 23. Tinos and Arimo are bundled under Apache 2.0 as metric-compatible substitutes for Times New Roman and Arial; Microsoft font files are not committed.
 24. Content ordering is adaptive: the agent may propose reordering schema-defined sections and items, selecting or omitting content, and adopting evidence-supported JD terminology while the visual template remains fixed.
 25. Truthfulness, evidence linkage, protected facts, schema validity, and explicit approval are the ordering and ATS-optimization boundaries; chronology and base order are not hard constraints.
@@ -1406,8 +1407,8 @@ Cover-letter generation is the next complete milestone if it is not included in 
 
 - ModelScope API Inference introduction: <https://modelscope.cn/docs/model-service/API-Inference/intro>
 - ModelScope API Inference limits and supported-model behavior: <https://www.modelscope.cn/docs/model-service/API-Inference/limits>
-- Hugging Face Spaces overview and secrets: <https://huggingface.co/docs/hub/main/spaces-overview>
-- Hugging Face Spaces disk and storage behavior: <https://huggingface.co/docs/hub/main/spaces-storage>
+- Sablier scale-to-zero documentation: <https://sablierapp.dev/tutorials/getting-started/>
+- Sablier Docker socket proxy guidance: <https://sablierapp.dev/how-to-guides/advanced/security/docker-socket-proxy/>
 - Vercel Vite deployment: <https://vercel.com/docs/frameworks/frontend/vite>
 - WeasyPrint documentation: <https://doc.courtbouillon.org/weasyprint/stable/>
 - WeasyPrint API and versioning: <https://doc.courtbouillon.org/weasyprint/stable/api_reference.html>

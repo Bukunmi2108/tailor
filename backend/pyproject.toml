@@ -16,7 +16,6 @@ dependencies = [
   "PyJWT==2.10.1",
   "weasyprint==66.0",
   "pypdf==5.8.0",
-  "argon2>=0.1.10",
 ]
 
 [build-system]

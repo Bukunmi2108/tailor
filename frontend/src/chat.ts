@@ -3,7 +3,7 @@ import type { Analysis, ChatMessage, MessagePart, Resume, ServerEvent } from "./
 
 const API = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  "https://bukunmi2108-tailor.hf.space"
+  "http://localhost:7860"
 ).replace(/\/$/, "");
 
 function wsUrl(): string {

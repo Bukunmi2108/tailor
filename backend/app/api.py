@@ -73,7 +73,7 @@ def public_config(settings: Settings = Depends(get_settings)):
         "authentication_required": True,
         "resume_template_versions": ["resume-v1"],
         "cover_template_versions": ["cover-v1"],
-        "persistence": "browser-indexeddb",
+        "persistence": "browser-memory",
     }
 
 

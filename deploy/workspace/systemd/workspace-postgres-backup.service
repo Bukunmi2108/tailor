@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the workspace PostgreSQL cluster
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=bukunmi
+Group=docker
+ExecStart=/opt/workspace/bin/backup-postgres

@@ -8,7 +8,7 @@ import type {
 
 const API = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  "https://bukunmi2108-tailor.hf.space"
+  "http://localhost:7860"
 ).replace(/\/$/, "");
 const TOKEN_KEY = "tailor-access-token";
 

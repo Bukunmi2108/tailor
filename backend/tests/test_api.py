@@ -12,5 +12,5 @@ def test_public_health_and_protected_base():
 def test_public_config_contains_no_secrets():
     with TestClient(app) as client:
         payload = client.get("/api/config/public").json()
-        assert payload["persistence"] == "browser-indexeddb"
+        assert payload["persistence"] == "browser-memory"
         assert "token" not in str(payload).lower()

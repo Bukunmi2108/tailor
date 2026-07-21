@@ -30,12 +30,6 @@ wheels = [
 ]
 
 [[package]]
-name = "argon2"
-version = "0.1.10"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5c/55/94605d5bfa140601fde256f548ed1733a5327f2d7d159b60a727e8613170/argon2-0.1.10.tar.gz", hash = "sha256:523a3d3b88f3a46244b4976a6ca81994705848538bbe9e41426ea54ccb75eb90", size = 28270, upload-time = "2015-12-20T22:40:47.144Z" }
-
-[[package]]
 name = "argon2-cffi"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1376,7 +1370,6 @@ name = "tailor-backend"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "argon2" },
     { name = "argon2-cffi" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -1400,7 +1393,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "argon2", specifier = ">=0.1.10" },
     { name = "argon2-cffi", specifier = "==25.1.0" },
     { name = "fastapi", specifier = "==0.116.1" },
     { name = "httpx", specifier = "==0.28.1" },

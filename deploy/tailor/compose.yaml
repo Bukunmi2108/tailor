@@ -1,0 +1,37 @@
+name: tailor
+
+services:
+  backend:
+    build:
+      context: ./source/backend
+      dockerfile: Dockerfile
+    image: tailor-backend:${TAILOR_IMAGE_TAG:-local}
+    container_name: workspace-tailor
+    env_file:
+      - ./.env
+    expose:
+      - "7860"
+    networks:
+      - gateway
+    labels:
+      sablier.enable: "true"
+      sablier.group: tailor
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/readyz', timeout=5)"
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 20s
+    mem_limit: 3g
+    cpus: 2.0
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  gateway:
+    name: workspace_gateway
+    external: true

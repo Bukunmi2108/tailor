@@ -167,7 +167,7 @@ const MessageBubble = memo(function MessageBubble({
   message: ChatMessage;
   actions: ChatActions;
 }) {
-  const parts = message.parts ?? [];
+  const parts = useMemo(() => message.parts ?? [], [message.parts]);
   const reasoning = parts.find((part) => part.type === "reasoning");
   const groups = useMemo(() => groupParts(parts.filter((part) => part.type !== "reasoning")), [parts]);
   const streaming = message.status === "streaming";
@@ -225,7 +225,7 @@ const MessageBubble = memo(function MessageBubble({
             );
           case "model":
             return <ModelBadge key={part.id} part={part} />;
-          case "edits_proposed":
+          case "edits_proposed": {
             const decided = part.decisions.length;
             const reviewCount = part.plan.edits.filter((edit) => edit.risk === "review").length;
             return (
@@ -240,6 +240,7 @@ const MessageBubble = memo(function MessageBubble({
                 </button>
               </section>
             );
+          }
           case "cover_letter":
             return (
               <CoverEditor

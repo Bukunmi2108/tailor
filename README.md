@@ -41,9 +41,18 @@ make test
 
 Agent tests do not spend API credit. Provider behavior is tested through validation boundaries; perform a live smoke test deliberately after configuring a token.
 
-## Hugging Face Space
+## Production deployment
 
-Create a public Docker Space with `backend/` as its repository contents. Configure the values from `backend/.env.example` in Space Settings. `backend/Dockerfile` listens on port 7860 and includes WeasyPrint dependencies. It builds with `backend/` as its Docker context.
+The frontend is deployed from `frontend/` on Vercel. The backend runs as a Docker container on the shared Contabo workspace VPS. Caddy terminates HTTPS and Sablier stops the backend after 24 hours without traffic, then starts it on the next request. The gateway and Sablier remain running so cold starts are reachable.
+
+Production infrastructure is declared under `deploy/`:
+
+- `deploy/workspace/gateway/`: shared Caddy, Sablier, and restricted Docker socket proxy;
+- `deploy/workspace/bin/deploy-tailor`: server-side revision deployment command;
+- `deploy/tailor/compose.yaml`: Tailor backend service, resource limits, health check, and scale-to-zero labels;
+- `.github/workflows/pipeline.yml`: backend/frontend CI followed by a gated main-branch VPS deployment.
+
+The VPS keeps the backend environment in `/opt/workspace/apps/tailor/.env`; deployments never overwrite it. `backend/Dockerfile` listens on port 7860 and includes the WeasyPrint dependencies.
 
 Required secrets:
 
@@ -51,11 +60,11 @@ Required secrets:
 - `TAILOR_PASSWORD_HASH`
 - `AUTH_SIGNING_SECRET`
 
-Set `ALLOWED_ORIGINS` to the Vercel production origin and any intentionally supported preview origins. Never commit `.env`.
+Set `ALLOWED_ORIGINS` to the exact Vercel production origin and any intentionally supported preview origins. Never commit `.env`. PostgreSQL is not part of Tailor: application state remains intentionally disposable in browser memory.
 
 ## Vercel
 
-Deploy `frontend/` as the Vercel project root and set `VITE_API_BASE_URL` to the Hugging Face Space origin. The frontend makes direct cross-origin API requests, so `ALLOWED_ORIGINS` on the backend must list the Vercel production and intentionally supported preview origins.
+Deploy `frontend/` as the Vercel project root and set `VITE_API_BASE_URL` to the HTTPS DuckDNS backend origin. The frontend makes direct cross-origin API and WebSocket requests, so `ALLOWED_ORIGINS` on the backend must list the Vercel production and intentionally supported preview origins.
 
 ## Base updates
 
@@ -63,4 +72,4 @@ Tailoring decisions never modify `backend/canon/resume.yaml`. Replacing the repo
 
 ## Security boundary
 
-The passphrase protects API use and model quota. The Space is public, so committed source, canonical resume content, reference PDF, fonts, and templates are public. The access token is short-lived and stored only in `sessionStorage`; the reusable passphrase is not retained by the frontend.
+The passphrase protects API use and model quota; it does not make this public repository private. The access token is short-lived and stored only in `sessionStorage`; the reusable passphrase is not retained by the frontend. HTTP CORS and WebSocket Origin checks both enforce the configured frontend origins.

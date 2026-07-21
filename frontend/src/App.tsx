@@ -438,7 +438,6 @@ function App() {
 
     const activeRevision = currentRevision!;
     const chatResume = workingResumeRef.current ?? activeRevision.resume;
-    let socket: WebSocket;
     const finishTurn = () => {
       if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
       socketRef.current = undefined;
@@ -446,7 +445,7 @@ function App() {
       setConnecting(false);
       if (socket.readyState === WebSocket.OPEN) socket.close(1000, "Turn complete");
     };
-    socket = connectChat(
+    const socket = connectChat(
       {
         message: trimmed,
         message_history: historyForRequest,

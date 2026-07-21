@@ -37,8 +37,11 @@ class ClientChatMessage(BaseModel):
 
 @router.websocket("/ws/chat")
 async def chat_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
     settings: Settings = get_settings()
+    if not origin_allowed(websocket.headers.get("origin"), settings.origins):
+        await websocket.close(code=4403, reason="Origin is not allowed")
+        return
+    await websocket.accept()
 
     try:
         raw = await websocket.receive_json()
@@ -99,6 +102,10 @@ async def chat_websocket(websocket: WebSocket) -> None:
         await events.send("error", code="agent_run_failed", message=str(exc))
     finally:
         reset_model_trace(trace_token)
+
+
+def origin_allowed(origin: str | None, allowed_origins: list[str]) -> bool:
+    return origin is not None and origin in allowed_origins
 
 
 async def _handle_event(event: Any, events: EventSender) -> None:
