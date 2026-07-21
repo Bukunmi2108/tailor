@@ -212,7 +212,7 @@ Required backend configuration:
 | `SECONDARY_MODEL_NAME` | Variable | Secondary ModelScope model ID |
 | `FALLBACK_MODEL_BASE_URL` | Variable | Existing independent llama.cpp Space endpoint |
 | `FALLBACK_MODEL_NAME` | Variable | Nemotron emergency-fallback model ID |
-| `MODEL_FALLBACK_ENABLED` | Variable | Enable or disable the configured fallback chain |
+| `FALLBACK_MODEL_ENABLED` | Variable | Enable or disable the configured fallback chain |
 | `ALLOWED_ORIGINS` | Variable | Vercel production and preview origins |
 | `APP_ENV` | Variable | Local, preview, or production behavior |
 | `TAILOR_PASSWORD_HASH` | Secret | Argon2id hash of the personal application passphrase |
