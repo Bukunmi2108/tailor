@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+
+from .tree import walk
 
 
 class StrictModel(BaseModel):
@@ -124,19 +126,11 @@ class ResumeData(StrictModel):
 
     @model_validator(mode="after")
     def unique_ids(self) -> ResumeData:
-        ids: list[str] = []
-
-        def visit(value: Any) -> None:
-            if isinstance(value, dict):
-                if isinstance(value.get("id"), str):
-                    ids.append(value["id"])
-                for child in value.values():
-                    visit(child)
-            elif isinstance(value, list):
-                for child in value:
-                    visit(child)
-
-        visit(self.model_dump(mode="json"))
+        ids = [
+            node["id"]
+            for node, _, _, _ in walk(self.model_dump(mode="json"))
+            if isinstance(node.get("id"), str)
+        ]
         duplicates = sorted({item for item in ids if ids.count(item) > 1})
         if duplicates:
             raise ValueError(f"duplicate IDs: {', '.join(duplicates)}")

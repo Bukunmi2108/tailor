@@ -14,7 +14,6 @@ type Props = {
   decisions: Decision[];
   resume: Resume;
   activeEditId: string;
-  busy: boolean;
   onActiveChange: (editId: string) => void;
   onDecision: (decision: Decision) => void;
   onClose: () => void;
@@ -141,7 +140,6 @@ export function ReviewDeck({
   decisions,
   resume,
   activeEditId,
-  busy,
   onActiveChange,
   onDecision,
   onClose,
@@ -169,7 +167,7 @@ export function ReviewDeck({
   }
 
   function decide(kind: "approved" | "rejected" | "modified") {
-    if (!edit || busy) return;
+    if (!edit) return;
     onDecision({
       edit_id: edit.edit_id,
       decision: kind,
@@ -237,18 +235,18 @@ export function ReviewDeck({
               </details>
             )}
             <div className="review-decisions">
-              <button className={decision?.decision === "rejected" ? "selected reject" : ""} disabled={busy} onClick={() => decide("rejected")}>Reject</button>
-              {edit.op === "rewrite_text" && editing && <button disabled={busy || !custom.trim()} onClick={() => decide("modified")}>Use edit</button>}
-              <button className={`approve ${decision?.decision === "approved" ? "selected" : ""}`} disabled={busy} onClick={() => decide("approved")}><Check /> {busy ? "Applying" : "Approve"}</button>
+              <button className={decision?.decision === "rejected" ? "selected reject" : ""} onClick={() => decide("rejected")}>Reject</button>
+              {edit.op === "rewrite_text" && editing && <button disabled={!custom.trim()} onClick={() => decide("modified")}>Use edit</button>}
+              <button className={`approve ${decision?.decision === "approved" ? "selected" : ""}`} onClick={() => decide("approved")}><Check /> Approve</button>
             </div>
           </article>
         </div>
       )}
 
       <footer className="review-navigation">
-        <button disabled={activeIndex === 0 || busy} onClick={() => move(-1)}><ArrowLeft /> Previous</button>
+        <button disabled={activeIndex === 0} onClick={() => move(-1)}><ArrowLeft /> Previous</button>
         <span>{decisions.length} decided</span>
-        <button disabled={activeIndex === plan.edits.length - 1 || busy} onClick={() => move(1)}>Next <ArrowRight /></button>
+        <button disabled={activeIndex === plan.edits.length - 1} onClick={() => move(1)}>Next <ArrowRight /></button>
       </footer>
     </section>
   );

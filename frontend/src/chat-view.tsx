@@ -52,12 +52,19 @@ const markdownComponents: Components = {
 };
 
 function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
+  if (streaming) {
+    return (
+      <div className="message-text streaming-text">
+        {text}
+        <span className="stream-caret" />
+      </div>
+    );
+  }
   return (
     <div className="message-text">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {text}
       </ReactMarkdown>
-      {streaming && <span className="stream-caret" />}
     </div>
   );
 }

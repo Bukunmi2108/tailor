@@ -8,6 +8,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import RunContext
 from pydantic_ai.toolsets.function import FunctionToolset
 
+from ...tree import walk
 from ..deps import AgentDeps
 
 
@@ -64,11 +65,7 @@ class ResumeTools(AbstractCapability[AgentDeps]):
                     scored.append((score, atom))
             scored.sort(key=lambda item: (-item[0], item[1].id))
             cap = max(1, min(limit, self.max_results))
-            result = ResumeSearchResult(query=query, matches=[atom for _, atom in scored[:cap]])
-            await ctx.deps.events.send(
-                "tool.result", tool="search_resume", output={"match_count": len(result.matches)}
-            )
-            return result
+            return ResumeSearchResult(query=query, matches=[atom for _, atom in scored[:cap]])
 
         @toolset.tool(name="inspect_resume_evidence", strict=False)
         async def inspect_resume_evidence(
@@ -79,16 +76,10 @@ class ResumeTools(AbstractCapability[AgentDeps]):
                 "tool.started", tool="inspect_resume_evidence", input={"evidence_ids": evidence_ids}
             )
             by_id = {atom.id: atom for atom in _resume_atoms(ctx.deps.resume)}
-            result = EvidenceResult(
+            return EvidenceResult(
                 found=[by_id[item] for item in evidence_ids if item in by_id],
                 missing_ids=[item for item in evidence_ids if item not in by_id],
             )
-            await ctx.deps.events.send(
-                "tool.result",
-                tool="inspect_resume_evidence",
-                output={"found": len(result.found), "missing": len(result.missing_ids)},
-            )
-            return result
 
         @toolset.tool(name="inspect_job_requirements", strict=False)
         async def inspect_job_requirements(
@@ -100,36 +91,20 @@ class ResumeTools(AbstractCapability[AgentDeps]):
             )
             requirements = ctx.deps.analysis.requirements if ctx.deps.analysis else []
             by_id = {item.requirement_id: item for item in requirements}
-            result = RequirementResult(
+            return RequirementResult(
                 found=[by_id[item].model_dump(mode="json") for item in requirement_ids if item in by_id],
                 missing_ids=[item for item in requirement_ids if item not in by_id],
             )
-            await ctx.deps.events.send(
-                "tool.result",
-                tool="inspect_job_requirements",
-                output={"found": len(result.found), "missing": len(result.missing_ids)},
-            )
-            return result
 
         return toolset
 
 
 def _resume_atoms(resume) -> list[ResumeAtom]:
-    atoms: list[ResumeAtom] = []
-
-    def visit(value: Any, kind: str = "resume") -> None:
-        if isinstance(value, dict):
-            identifier = value.get("id")
-            if isinstance(identifier, str):
-                atoms.append(ResumeAtom(id=identifier, kind=kind, content=value))
-            for key, child in value.items():
-                visit(child, key)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child, kind)
-
-    visit(resume.model_dump(mode="json"))
-    return atoms
+    return [
+        ResumeAtom(id=node["id"], kind=section, content=node)
+        for node, _, _, section in walk(resume.model_dump(mode="json"))
+        if isinstance(node.get("id"), str)
+    ]
 
 
 def _strings(value: Any):

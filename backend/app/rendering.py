@@ -32,9 +32,20 @@ def _font_data(path: Path) -> str:
 
 
 @lru_cache
-def font_sources(embedded: bool = True) -> dict[str, str]:
+def font_sources(embedded: bool = True, font_url_prefix: str | None = None) -> dict[str, str]:
     root = get_settings().template_root / "fonts"
-    source = _font_data if embedded else lambda path: path.resolve().as_uri()
+    if font_url_prefix:
+        prefix = font_url_prefix.rstrip("/")
+
+        def source(path: Path) -> str:
+            return f"{prefix}/{path.name}"
+    elif embedded:
+        source = _font_data
+    else:
+
+        def source(path: Path) -> str:
+            return path.resolve().as_uri()
+
     return {
         "tinos_regular": source(root / "Tinos-Regular.ttf"),
         "tinos_bold": source(root / "Tinos-Bold.ttf"),
@@ -44,23 +55,39 @@ def font_sources(embedded: bool = True) -> dict[str, str]:
     }
 
 
-def render_resume(resume: ResumeData, template_version: str, *, embed_fonts: bool = True) -> str:
+def render_resume(
+    resume: ResumeData,
+    template_version: str,
+    *,
+    embed_fonts: bool = True,
+    font_url_prefix: str | None = None,
+) -> str:
     if template_version not in SUPPORTED_RESUME_TEMPLATES:
         raise ValueError(f"unsupported template version {template_version!r}")
     return (
         environment()
         .get_template(f"{template_version}/resume.html")
-        .render(resume=resume, fonts=font_sources(embed_fonts), content_hash=content_hash(resume))
+        .render(
+            resume=resume,
+            fonts=font_sources(embed_fonts, font_url_prefix),
+            content_hash=content_hash(resume),
+        )
     )
 
 
-def render_cover(letter: CoverLetter, template_version: str = "cover-v1", *, embed_fonts: bool = True) -> str:
+def render_cover(
+    letter: CoverLetter,
+    template_version: str = "cover-v1",
+    *,
+    embed_fonts: bool = True,
+    font_url_prefix: str | None = None,
+) -> str:
     if template_version not in SUPPORTED_COVER_TEMPLATES:
         raise ValueError(f"unsupported template version {template_version!r}")
     return (
         environment()
         .get_template(f"{template_version}/cover.html")
-        .render(letter=letter, fonts=font_sources(embed_fonts))
+        .render(letter=letter, fonts=font_sources(embed_fonts, font_url_prefix))
     )
 
 

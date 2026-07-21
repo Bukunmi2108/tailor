@@ -2,6 +2,11 @@ import type { Decision, Edit, Plan, Resume } from "./types";
 
 type JsonRecord = Record<string, unknown>;
 
+// Keep in sync with PROTECTED_FIELDS in backend/app/engine.py. The client derives
+// optimistically, so it must reject exactly what the server's derive_resume rejects —
+// otherwise the UI shows an edit the backend will refuse.
+const PROTECTED_FIELDS = new Set(["name", "email", "phone", "company", "dates", "institution"]);
+
 function find(value: unknown, targetId: string, parent?: unknown, key?: string | number): {
   item: JsonRecord;
   parent?: unknown;
@@ -44,6 +49,7 @@ function apply(root: JsonRecord, edit: Edit, decision: Decision) {
 
   if (edit.op === "rewrite_text") {
     const field = String(edit.field ?? "text");
+    if (PROTECTED_FIELDS.has(field)) throw new Error(`Field ${field} is protected`);
     if (item[field] !== edit.before) throw new Error(`Stale text at ${edit.target_id}`);
     item[field] = decision.decision === "modified" ? decision.modified_after ?? "" : edit.after;
   } else if (edit.op === "remove_item") {
@@ -76,19 +82,5 @@ export function deriveResumeLocal(base: Resume, plan: Plan, decisions: Decision[
     if (!decision || decision.decision === "rejected") continue;
     apply(root, edit, decision);
   }
-  return root as unknown as Resume;
-}
-
-/**
- * Applies a single newly-made decision onto an already-derived resume, instead of replaying
- * the whole plan from the base snapshot. Only valid for a decision on an edit_id that hasn't
- * been decided before — revising an existing decision must go through deriveResumeLocal, since
- * there's no way to undo a previously-applied edit from here.
- */
-export function applyDecisionOnto(current: Resume, plan: Plan, decision: Decision): Resume {
-  const root = structuredClone(current) as unknown as JsonRecord;
-  const edit = plan.edits.find((item) => item.edit_id === decision.edit_id);
-  if (!edit) throw new Error(`Unknown edit ${decision.edit_id}`);
-  if (decision.decision !== "rejected") apply(root, edit, decision);
   return root as unknown as Resume;
 }

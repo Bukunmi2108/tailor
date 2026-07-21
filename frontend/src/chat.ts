@@ -17,6 +17,56 @@ export type ConnectChatPayload = {
   analysis: Analysis | null;
 };
 
+type FrameScheduler = (callback: FrameRequestCallback) => number;
+type FrameCanceller = (handle: number) => void;
+
+export function createStreamEventBatcher(
+  commit: (events: ServerEvent[]) => void,
+  schedule: FrameScheduler = requestAnimationFrame,
+  cancelFrame: FrameCanceller = cancelAnimationFrame,
+) {
+  let pending: ServerEvent[] = [];
+  let frame: number | undefined;
+
+  function flush() {
+    if (frame !== undefined) {
+      cancelFrame(frame);
+      frame = undefined;
+    }
+    if (!pending.length) return;
+    const events = pending;
+    pending = [];
+    commit(events);
+  }
+
+  return {
+    push(event: ServerEvent) {
+      if (event.type !== "reasoning.delta" && event.type !== "message.delta") {
+        // Tool and lifecycle events are ordering boundaries: render all text that arrived
+        // before them, then handle the boundary immediately.
+        flush();
+        commit([event]);
+        return;
+      }
+      pending.push(event);
+      if (frame !== undefined) return;
+      frame = schedule(() => {
+        frame = undefined;
+        if (!pending.length) return;
+        const events = pending;
+        pending = [];
+        commit(events);
+      });
+    },
+    flush,
+    cancel() {
+      if (frame !== undefined) cancelFrame(frame);
+      frame = undefined;
+      pending = [];
+    },
+  };
+}
+
 export function connectChat(
   payload: ConnectChatPayload,
   onEvent: (event: ServerEvent) => void,
@@ -149,15 +199,6 @@ export function applyServerEvent(
     default:
       return messages;
   }
-}
-
-export function decisionsForPlan(messages: ChatMessage[], planId: string) {
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      if (part.type === "edits_proposed" && part.plan.plan_id === planId) return part;
-    }
-  }
-  return undefined;
 }
 
 export function stopAssistantMessage(messages: ChatMessage[], assistantId: string): ChatMessage[] {

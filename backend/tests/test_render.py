@@ -23,3 +23,16 @@ def test_resume_preview_is_script_free_and_pdf_renders(resume):
     before = _pdf_from_html_cached.cache_info().hits
     assert pdf_from_html(pdf_html)[0] == pdf
     assert _pdf_from_html_cached.cache_info().hits == before + 1
+
+
+def test_browser_preview_links_fonts_instead_of_embedding_megabytes(resume):
+    html = render_resume(
+        resume,
+        "resume-v1",
+        embed_fonts=False,
+        font_url_prefix="http://testserver/assets/fonts",
+    )
+
+    assert "data:font" not in html
+    assert "http://testserver/assets/fonts/Tinos-Regular.ttf" in html
+    assert len(html.encode()) < 100_000

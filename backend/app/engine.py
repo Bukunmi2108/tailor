@@ -19,6 +19,7 @@ from .models import (
     TailorPlan,
     TextAtom,
 )
+from .tree import find_node
 from .util import content_hash
 
 
@@ -37,27 +38,11 @@ ITEM_ADAPTERS = {
 }
 
 
-def _find(value: Any, target_id: str, parent: Any = None, key: str | int | None = None):
-    if isinstance(value, dict):
-        if value.get("id") == target_id:
-            return value, parent, key
-        for child_key, child in value.items():
-            found = _find(child, target_id, value, child_key)
-            if found:
-                return found
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            found = _find(child, target_id, value, index)
-            if found:
-                return found
-    return None
-
-
 def _resolve_collection(root: dict[str, Any], target_id: str, field: str) -> list[Any]:
     if target_id == "resume.root":
         collection = root.get(field)
     else:
-        found = _find(root, target_id)
+        found = find_node(root, target_id)
         if not found:
             raise EditConflict(f"target {target_id!r} does not exist")
         collection = found[0].get(field)
@@ -73,14 +58,14 @@ def _apply(root: dict[str, Any], edit: Edit) -> None:
             item = ITEM_ADAPTERS[edit.item_type].validate_python(edit.item).model_dump(mode="json")
         except (KeyError, ValidationError) as exc:
             raise EditConflict(f"invalid {edit.item_type} payload: {exc}") from exc
-        if _find(root, item["id"]):
+        if find_node(root, item["id"]):
             raise EditConflict(f"item ID {item['id']!r} already exists")
         collection = _resolve_collection(root, edit.target_id, edit.collection)
         position = len(collection) if edit.position is None else min(edit.position, len(collection))
         collection.insert(position, item)
         return
 
-    found = _find(root, edit.target_id)
+    found = find_node(root, edit.target_id)
     if not found:
         raise EditConflict(f"target {edit.target_id!r} does not exist")
     item, parent, key = found
@@ -147,7 +132,7 @@ def validate_cover_evidence(letter: CoverLetter, resume: ResumeData) -> None:
             evidence
             for paragraph in letter.paragraphs
             for evidence in paragraph.evidence_ids
-            if not _find(root, evidence)
+            if not find_node(root, evidence)
         }
     )
     if missing:

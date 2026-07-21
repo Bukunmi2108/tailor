@@ -6,8 +6,6 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 EventType = Literal[
-    "session.started",
-    "agent.started",
     "model.selected",
     "model.fallback",
     "tool.started",
@@ -18,7 +16,6 @@ EventType = Literal[
     "edits.proposed",
     "cover_letter.drafted",
     "message.completed",
-    "session.completed",
     "error",
 ]
 

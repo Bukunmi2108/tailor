@@ -12,9 +12,9 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import { api, download, token } from "./api";
-import { applyServerEvent, connectChat, stopAssistantMessage } from "./chat";
+import { applyServerEvent, connectChat, createStreamEventBatcher, stopAssistantMessage } from "./chat";
 import { ChatThread, type ChatActions } from "./chat-view";
-import { applyDecisionOnto, deriveResumeLocal } from "./edit-engine";
+import { deriveResumeLocal } from "./edit-engine";
 import { ReviewDeck } from "./review-deck";
 import type {
   BaseVersion,
@@ -110,6 +110,7 @@ function App() {
   const [draft, setDraft] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [activeReview, setActiveReview] = useState<ActiveReview>();
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
   const sessionRef = useRef(session);
@@ -121,6 +122,7 @@ function App() {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const socketRef = useRef<WebSocket | undefined>(undefined);
+  const streamBatchRef = useRef<ReturnType<typeof createStreamEventBatcher> | undefined>(undefined);
   const activeAssistantId = useRef<string | undefined>(undefined);
   const validationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const validationGeneration = useRef(0);
@@ -152,28 +154,39 @@ function App() {
   useEffect(() => {
     if (authenticated) void boot();
   }, [authenticated, boot]);
+  // Single source of truth for the preview: whatever `workingResume` (or the cover letter)
+  // currently is gets rendered by the backend and written here — nothing else calls
+  // setPreviewHtml. Debounced so a burst of review decisions collapses into one render.
   useEffect(() => {
-    if (!revision) return;
+    const coverLetter = session?.coverLetter;
+    const controller = new AbortController();
+    const render =
+      preview === "cover" && coverLetter
+        ? () => api.previewCover(coverLetter, controller.signal)
+        : workingResume
+          ? () => api.previewResume(workingResume, controller.signal)
+          : undefined;
+    if (!render) return;
     let cancelled = false;
-    (preview === "cover" && session?.coverLetter
-      ? api.previewCover(session.coverLetter)
-      : api.previewResume(workingResumeRef.current ?? revision.resume)
-    )
-      .then((html) => {
-        if (!cancelled) setPreviewHtml(html);
-      })
-      .catch((value) => setError(value.message));
+    const timer = setTimeout(() => {
+      render()
+        .then((html) => {
+          if (!cancelled) setPreviewHtml(html);
+        })
+        .catch((value) => {
+          if (value instanceof DOMException && value.name === "AbortError") return;
+          if (!cancelled) setError(value instanceof Error ? value.message : "Preview failed");
+        });
+    }, 120);
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
     };
-  }, [revision, preview, session?.coverLetter]);
+  }, [workingResume, preview, session?.coverLetter]);
   useEffect(() => () => socketRef.current?.close(), []);
   useEffect(() => () => clearTimeout(validationTimer.current), []);
   useEffect(() => () => exportTimers.current.forEach(clearTimeout), []);
-  const estimatedPages = useMemo(
-    () => Math.max(1, Math.ceil((previewHtml.match(/<section/g) || []).length / 3)),
-    [previewHtml],
-  );
 
   function updateSession(patch: Partial<Session>, nextMessages?: ChatMessage[]) {
     if (!sessionRef.current) return;
@@ -214,8 +227,11 @@ function App() {
       try {
         const result = await api.derive(planBase, plan, decisions, plan.base_snapshot_hash);
         if (generation !== validationGeneration.current) return;
-        workingResumeRef.current = result.resume;
-        setWorkingResume(result.resume);
+        if (JSON.stringify(workingResumeRef.current) !== JSON.stringify(result.resume)) {
+          workingResumeRef.current = result.resume;
+          setWorkingResume(result.resume);
+        }
+        setWarnings(result.warnings);
         const currentSession = sessionRef.current;
         if (!currentSession) throw new Error("The current session is missing");
         const currentRevision = revisions.current.get(currentSession.activeRevisionId);
@@ -239,46 +255,17 @@ function App() {
         setSession(nextSession);
       } catch (value) {
         if (generation !== validationGeneration.current) return;
+        // The server is the authority. If it rejects a decision the optimistic client
+        // engine accepted, revert the preview to the last server-confirmed resume rather
+        // than leaving the rejected edit on screen alongside the error.
+        const authoritative = revisionRef.current?.resume;
+        if (authoritative) {
+          workingResumeRef.current = authoritative;
+          setWorkingResume(authoritative);
+        }
         setError(value instanceof Error ? value.message : "Could not validate edits");
       }
     }, 500);
-  }, []);
-
-  const patchPreview = useCallback((edit: Edit, decision: Decision): boolean => {
-    const document = previewRef.current?.contentDocument;
-    if (!document) return false;
-    const target = document.querySelector<HTMLElement>(`[data-resume-id="${CSS.escape(edit.target_id)}"]`);
-    if (!target) return false;
-    if (edit.op === "rewrite_text") {
-      const field = typeof edit.field === "string" ? edit.field : "text";
-      const fieldTarget = target.dataset.resumeField === field
-        ? target
-        : target.querySelector<HTMLElement>(`[data-resume-field="${CSS.escape(field)}"]`);
-      if (fieldTarget) {
-        fieldTarget.textContent = decision.decision === "modified"
-          ? decision.modified_after ?? ""
-          : decision.decision === "rejected"
-            ? typeof edit.before === "string" ? edit.before : ""
-            : typeof edit.after === "string" ? edit.after : "";
-      }
-      return Boolean(fieldTarget);
-    } else if (edit.op === "remove_item" || edit.op === "set_visibility") {
-      target.hidden = decision.decision === "rejected" ? false : edit.op === "remove_item" || edit.visible === false;
-      return true;
-    } else if (edit.op === "replace_collection") {
-      const field = typeof edit.field === "string" ? edit.field : "items";
-      const fieldTarget = target.querySelector<HTMLElement>(`[data-resume-field="${CSS.escape(field)}"]`);
-      const value = decision.decision === "rejected" ? edit.before : edit.after;
-      if (fieldTarget && Array.isArray(value)) fieldTarget.textContent = value.join(" · ");
-      return Boolean(fieldTarget && Array.isArray(value));
-    } else if (edit.op === "move_item" && decision.decision !== "rejected") {
-      const section = typeof edit.destination_collection === "string"
-        ? document.querySelector<HTMLElement>(`[data-resume-section="${CSS.escape(edit.destination_collection)}"]`)
-        : null;
-      if (section) section.append(target);
-      return Boolean(section);
-    }
-    return false;
   }, []);
 
   const reviewPart = useMemo(() => {
@@ -316,8 +303,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeReviewEdit) requestAnimationFrame(() => focusPreviewTarget(activeReviewEdit));
-  }, [activeReviewEdit, previewHtml, focusPreviewTarget]);
+    if (!activeReviewEdit) return;
+    const frame = requestAnimationFrame(() => focusPreviewTarget(activeReviewEdit));
+    return () => cancelAnimationFrame(frame);
+  }, [activeReviewEdit, focusPreviewTarget]);
 
   const actions: ChatActions = useMemo(() => ({
     onReviewEdits: (messageId, partId) => {
@@ -438,25 +427,18 @@ function App() {
 
     const activeRevision = currentRevision!;
     const chatResume = workingResumeRef.current ?? activeRevision.resume;
+    let socket: WebSocket;
     const finishTurn = () => {
       if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
+      streamBatchRef.current = undefined;
       socketRef.current = undefined;
       activeAssistantId.current = undefined;
       setConnecting(false);
       if (socket.readyState === WebSocket.OPEN) socket.close(1000, "Turn complete");
     };
-    const socket = connectChat(
-      {
-        message: trimmed,
-        message_history: historyForRequest,
-        resume: chatResume,
-        analysis: activeSession.currentAnalysis ?? null,
-      },
-      (event) => {
-        if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
+    const batcher = createStreamEventBatcher((events) => {
+      for (const event of events) {
         transcript = applyServerEvent(transcript, assistantId, event);
-        messagesRef.current = transcript;
-        setMessages(transcript);
         if (event.type === "analysis.completed") {
           updateSession({
             currentAnalysis: event.analysis,
@@ -475,21 +457,40 @@ function App() {
           updateSession({}, transcript);
           finishTurn();
         }
+      }
+      messagesRef.current = transcript;
+      setMessages(transcript);
+    });
+    socket = connectChat(
+      {
+        message: trimmed,
+        message_history: historyForRequest,
+        resume: chatResume,
+        analysis: activeSession.currentAnalysis ?? null,
+      },
+      (event) => {
+        if (socketRef.current !== socket || activeAssistantId.current !== assistantId) return;
+        batcher.push(event);
       },
       () => {
         if (socketRef.current !== socket) return;
+        batcher.flush();
+        streamBatchRef.current = undefined;
         socketRef.current = undefined;
         if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
         setConnecting(false);
       },
       (message) => {
         if (socketRef.current !== socket) return;
+        batcher.flush();
+        streamBatchRef.current = undefined;
         socketRef.current = undefined;
         if (activeAssistantId.current === assistantId) activeAssistantId.current = undefined;
         setError(message);
         setConnecting(false);
       },
     );
+    streamBatchRef.current = batcher;
     socketRef.current = socket;
   }
 
@@ -498,6 +499,8 @@ function App() {
   }
 
   function stopGeneration() {
+    streamBatchRef.current?.flush();
+    streamBatchRef.current = undefined;
     const socket = socketRef.current;
     socketRef.current = undefined;
     const assistantId = activeAssistantId.current;
@@ -571,6 +574,8 @@ function App() {
       return;
 
     socketRef.current?.close();
+    streamBatchRef.current?.cancel();
+    streamBatchRef.current = undefined;
     clearTimeout(validationTimer.current);
     validationGeneration.current += 1;
     revisions.current.clear();
@@ -588,6 +593,7 @@ function App() {
     setPreviewHtml("");
     setActiveReview(undefined);
     setError("");
+    setWarnings([]);
     setExportState({ status: "idle" });
     requestAnimationFrame(() => draftRef.current?.focus());
   }
@@ -600,6 +606,13 @@ function App() {
           <Warning weight="fill" />
           <span>{error}</span>
           <button onClick={() => setError("")}>Dismiss</button>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="warning-banner" role="status">
+          <Warning weight="fill" />
+          <span>{warnings.join(" · ")}</span>
+          <button onClick={() => setWarnings([])}>Dismiss</button>
         </div>
       )}
       <main className="workspace">
@@ -635,7 +648,6 @@ function App() {
               decisions={reviewPart.decisions}
               resume={workingResume}
               activeEditId={reviewPart.activeEditId ?? reviewPart.plan.edits[0]?.edit_id ?? ""}
-              busy={false}
               onActiveChange={(activeEditId) => {
                 const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
                   part.type === "edits_proposed" ? { ...part, activeEditId } : part,
@@ -643,46 +655,39 @@ function App() {
                 updateSession({}, next);
               }}
               onDecision={(decision) => {
-                const nextDecisions = [
-                  ...reviewPart.decisions.filter((item) => item.edit_id !== decision.edit_id),
-                  decision,
-                ];
-                const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
-                  part.type === "edits_proposed" ? { ...part, decisions: nextDecisions } : part,
-                );
                 const planBase = reviewBases.current.get(reviewPart.plan.base_snapshot_hash);
                 if (!planBase) {
                   setError("The resume snapshot for this review is missing");
                   return;
                 }
+                const nextDecisions = [
+                  ...reviewPart.decisions.filter((item) => item.edit_id !== decision.edit_id),
+                  decision,
+                ];
+                // Derive first with the one client engine (parity with the server). Only if it
+                // succeeds do we record the decision and let the preview effect re-render — a
+                // rejected edit never reaches the screen. The debounced api.derive then reconciles.
+                let nextResume: Resume;
                 try {
-                  const isNewDecision = !reviewPart.decisions.some((item) => item.edit_id === decision.edit_id);
-                  const nextResume = isNewDecision && workingResumeRef.current
-                    ? applyDecisionOnto(workingResumeRef.current, reviewPart.plan, decision)
-                    : deriveResumeLocal(planBase, reviewPart.plan, nextDecisions);
-                  workingResumeRef.current = nextResume;
-                  setWorkingResume(nextResume);
-                  const patched = patchPreview(
-                    reviewPart.plan.edits.find((edit) => edit.edit_id === decision.edit_id)!,
-                    decision,
-                  );
-                  if (!patched) {
-                    void api.previewResume(nextResume).then(setPreviewHtml).catch((value) => setError(value.message));
-                  }
+                  nextResume = deriveResumeLocal(planBase, reviewPart.plan, nextDecisions);
                 } catch (value) {
                   setError(value instanceof Error ? value.message : "Could not apply this edit");
                   return;
                 }
+                const next = updateMessagePart(activeReview.messageId, activeReview.partId, (part) =>
+                  part.type === "edits_proposed" ? { ...part, decisions: nextDecisions } : part,
+                );
+                workingResumeRef.current = nextResume;
+                setWorkingResume(nextResume);
                 updateSession({}, next);
                 validatePlanDecisions(reviewPart.plan, nextDecisions, planBase);
               }}
               onClose={() => {
                 setActiveReview(undefined);
                 updateSession({ activeReview: undefined });
-                const resume = workingResumeRef.current;
-                if (resume) {
-                  void api.previewResume(resume).then(setPreviewHtml).catch((value) => setError(value.message));
-                }
+                previewRef.current?.contentDocument
+                  ?.querySelectorAll(".tailor-review-target")
+                  .forEach((node) => node.classList.remove("tailor-review-target"));
               }}
             />
           ) : messages.length === 0 ? (
@@ -747,9 +752,6 @@ function App() {
                 Cover letter
               </button>
             </div>
-            <span className="page-estimate">
-              About {estimatedPages} page{estimatedPages === 1 ? "" : "s"}
-            </span>
             <div className="export-menu">
               <button
                 disabled={!revision || exportState.status === "preparing" || exportState.status === "slow" || exportState.status === "waking"}

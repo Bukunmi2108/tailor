@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .api import router
 from .canon import load_canon
@@ -26,8 +27,19 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
-    expose_headers=["Content-Disposition", "X-Page-Count", "X-Content-Hash"],
+    # Starlette's CORSMiddleware overwrites any per-route Access-Control-Expose-Headers
+    # with this list, so every download header the browser must read lives here.
+    expose_headers=[
+        "Content-Disposition",
+        "X-Page-Count",
+        "X-Content-Hash",
+        "X-Resume-Page-Count",
+        "X-Cover-Page-Count",
+        "X-Resume-Hash",
+        "X-Cover-Hash",
+    ],
 )
+app.mount("/assets/fonts", StaticFiles(directory=settings.template_root / "fonts"), name="fonts")
 app.include_router(router)
 app.include_router(chat_router)
 

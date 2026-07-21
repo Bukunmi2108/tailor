@@ -160,8 +160,6 @@ export type ChatMessage = {
 type EventBase = { event_id: string; sequence: number; timestamp: string };
 export type ServerEvent = EventBase &
   (
-    | { type: "session.started" }
-    | { type: "agent.started" }
     | { type: "model.selected"; provider: string; model: string; url: string; latency_ms?: number }
     | {
         type: "model.fallback";
@@ -179,7 +177,6 @@ export type ServerEvent = EventBase &
     | { type: "edits.proposed"; plan: Plan }
     | { type: "cover_letter.drafted"; cover_letter: CoverLetter }
     | { type: "message.completed"; text: string; message_history: unknown[] }
-    | { type: "session.completed" }
     | { type: "error"; code?: string; message: string }
   );
 

@@ -18,9 +18,13 @@ export const token = {
   clear: () => sessionStorage.removeItem(TOKEN_KEY),
 };
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Single fetch path: attaches auth, sets JSON content type, clears the token on 401, and
+ * raises the server's `detail` on failure. Callers pick the body shape (json/text/blob).
+ */
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  if (!(init.body instanceof FormData))
+  if (init.body && !(init.body instanceof FormData))
     headers.set("Content-Type", "application/json");
   const accessToken = token.get();
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
@@ -36,46 +40,36 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         : JSON.stringify(detail.detail),
     );
   }
-  return response.json() as Promise<T>;
+  return response;
 }
 
-async function blobRequest(path: string, body: unknown) {
-  const response = await fetch(`${API}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token.get() ?? ""}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok)
-    throw new Error(
-      (
-        await response.json().catch(() => ({ detail: response.statusText }))
-      ).detail,
-    );
+async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await send(path, init)).json() as Promise<T>;
+}
+
+async function requestText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
+  return (await send(path, { method: "POST", body: JSON.stringify(body), signal })).text();
+}
+
+async function requestBlob(path: string, body: unknown) {
+  const response = await send(path, { method: "POST", body: JSON.stringify(body) });
   return { blob: await response.blob(), headers: response.headers };
 }
 
 export const api = {
   login: (passphrase: string) =>
-    request<{ access_token: string; expires_at: string }>("/api/auth/login", {
+    requestJson<{ access_token: string; expires_at: string }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ passphrase }),
     }),
-  base: () => request<BaseVersion>("/api/base/current"),
-  provider: () =>
-    request<{
-      configured: boolean;
-      models: Array<{ model: string; ready: boolean }>;
-    }>("/api/provider/status"),
+  base: () => requestJson<BaseVersion>("/api/base/current"),
   derive: (
     snapshot: Resume,
     plan: Plan,
     decisions: Decision[],
     expected_snapshot_hash: string,
   ) =>
-    request<{ resume: Resume; content_hash: string; warnings: string[] }>(
+    requestJson<{ resume: Resume; content_hash: string; warnings: string[] }>(
       "/api/resume/derive",
       {
         method: "POST",
@@ -87,35 +81,18 @@ export const api = {
         }),
       },
     ),
-  previewResume: async (resume: Resume) => {
-    const response = await fetch(`${API}/api/render/resume-preview`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.get() ?? ""}`,
-      },
-      body: JSON.stringify({
-        resume,
-        template_version: resume.template_version,
-      }),
-    });
-    if (!response.ok) throw new Error("Preview failed");
-    return response.text();
-  },
-  previewCover: async (cover_letter: CoverLetter) => {
-    const response = await fetch(`${API}/api/render/cover-preview`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.get() ?? ""}`,
-      },
-      body: JSON.stringify({ cover_letter, template_version: "cover-v1" }),
-    });
-    if (!response.ok) throw new Error("Preview failed");
-    return response.text();
-  },
+  previewResume: (resume: Resume, signal?: AbortSignal) =>
+    requestText("/api/render/resume-preview", {
+      resume,
+      template_version: resume.template_version,
+    }, signal),
+  previewCover: (cover_letter: CoverLetter, signal?: AbortSignal) =>
+    requestText("/api/render/cover-preview", {
+      cover_letter,
+      template_version: "cover-v1",
+    }, signal),
   exportResume: (resume: Resume, company: string, role_title: string) =>
-    blobRequest("/api/export/resume", {
+    requestBlob("/api/export/resume", {
       resume,
       template_version: resume.template_version,
       company,
@@ -126,7 +103,7 @@ export const api = {
     company: string,
     role_title: string,
   ) =>
-    blobRequest("/api/export/cover-letter", {
+    requestBlob("/api/export/cover-letter", {
       cover_letter,
       template_version: "cover-v1",
       company,
@@ -138,7 +115,7 @@ export const api = {
     company: string,
     role_title: string,
   ) =>
-    blobRequest("/api/export/both", {
+    requestBlob("/api/export/both", {
       resume,
       cover_letter,
       resume_template_version: resume.template_version,

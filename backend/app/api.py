@@ -105,22 +105,38 @@ def derive_route(payload: DeriveRequest):
 
 
 @router.post("/render/resume-preview", dependencies=[Depends(require_auth)])
-def resume_preview(payload: SnapshotRequest):
+def resume_preview(payload: SnapshotRequest, request: Request):
     try:
-        return Response(render_resume(payload.resume, payload.template_version), media_type="text/html")
+        font_url = f"{str(request.base_url).rstrip('/')}/assets/fonts"
+        return Response(
+            render_resume(
+                payload.resume, payload.template_version, embed_fonts=False, font_url_prefix=font_url
+            ),
+            media_type="text/html",
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/render/cover-preview", dependencies=[Depends(require_auth)])
-def cover_preview(payload: CoverPreviewRequest):
+def cover_preview(payload: CoverPreviewRequest, request: Request):
     try:
-        return Response(render_cover(payload.cover_letter, payload.template_version), media_type="text/html")
+        font_url = f"{str(request.base_url).rstrip('/')}/assets/fonts"
+        return Response(
+            render_cover(
+                payload.cover_letter,
+                payload.template_version,
+                embed_fonts=False,
+                font_url_prefix=font_url,
+            ),
+            media_type="text/html",
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _pdf_response(pdf: bytes, pages: int, digest: str, filename: str) -> Response:
+    # Browser-visible headers are declared once on the CORS middleware in main.py.
     return Response(
         pdf,
         media_type="application/pdf",
@@ -128,7 +144,6 @@ def _pdf_response(pdf: bytes, pages: int, digest: str, filename: str) -> Respons
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Page-Count": str(pages),
             "X-Content-Hash": digest,
-            "Access-Control-Expose-Headers": "X-Page-Count, X-Content-Hash, Content-Disposition",
         },
     )
 
@@ -173,6 +188,5 @@ def export_both(payload: BothExportRequest):
             "X-Cover-Page-Count": str(cover_pages),
             "X-Resume-Hash": resume_hash,
             "X-Cover-Hash": cover_hash,
-            "Access-Control-Expose-Headers": "X-Resume-Page-Count, X-Cover-Page-Count, X-Resume-Hash, X-Cover-Hash, Content-Disposition",
         },
     )

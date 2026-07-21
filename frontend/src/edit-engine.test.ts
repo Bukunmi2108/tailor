@@ -50,4 +50,21 @@ describe("deriveResumeLocal", () => {
     const result = deriveResumeLocal(base, plan(rewrite), [{ edit_id: "edit-1", decision: "rejected" }]);
     expect(result).toEqual(base);
   });
+
+  // Parity guard against backend/app/engine.py: the server rejects rewrites of protected
+  // fields (test_protected_field_is_rejected), so the client engine must too, or the
+  // optimistic preview will diverge from the authoritative derive.
+  it("rejects rewrites of protected fields, matching the backend", () => {
+    const protectedEdit = { ...rewrite, field: "company", before: "Anything" } satisfies Plan["edits"][number];
+    expect(() =>
+      deriveResumeLocal(base, plan(protectedEdit), [{ edit_id: "edit-1", decision: "approved" }]),
+    ).toThrow(/protected/i);
+  });
+
+  it("rejects a stale before-value instead of applying blindly", () => {
+    const staleEdit = { ...rewrite, before: "Not the current text" } satisfies Plan["edits"][number];
+    expect(() =>
+      deriveResumeLocal(base, plan(staleEdit), [{ edit_id: "edit-1", decision: "approved" }]),
+    ).toThrow(/stale/i);
+  });
 });

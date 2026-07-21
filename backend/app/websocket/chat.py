@@ -59,7 +59,6 @@ async def chat_websocket(websocket: WebSocket) -> None:
         return
 
     events = EventSender(websocket.send_json)
-    await events.send("session.started")
 
     try:
         history = ModelMessagesTypeAdapter.validate_python(payload.message_history or [])
@@ -72,8 +71,6 @@ async def chat_websocket(websocket: WebSocket) -> None:
     try:
         agent = build_chat_agent(settings)
         deps = AgentDeps(resume=payload.resume, events=events, analysis=payload.analysis)
-
-        await events.send("agent.started")
 
         model_selection_sent = False
         result = None
@@ -95,7 +92,6 @@ async def chat_websocket(websocket: WebSocket) -> None:
         )
         final_text = result.output if result is not None else ""
         await events.send("message.completed", text=final_text, message_history=message_history)
-        await events.send("session.completed")
     except WebSocketDisconnect:
         return
     except Exception as exc:  # noqa: BLE001 - surface any run failure to the client as an error event
