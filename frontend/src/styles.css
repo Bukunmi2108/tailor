@@ -106,6 +106,7 @@ button svg { width: 16px; height: 16px; }
 .message-bubble { display: flex; flex-direction: column; gap: 10px; }
 .message-bubble.user { align-self: flex-end; max-width: 84%; }
 .message-bubble.user .message-text { border-radius: var(--radius); background: var(--accent); color: white; padding: 10px 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+.message-bubble.user > .message-text { margin: 0; }
 .message-bubble.assistant { align-self: stretch; }
 .message-bubble.assistant .message-text { color: var(--text); font-size: 13px; line-height: 1.62; }
 .streaming-text { white-space: pre-wrap; }
@@ -133,7 +134,7 @@ button svg { width: 16px; height: 16px; }
 .message-text hr { margin: 14px 0; border: 0; border-top: 1px solid var(--line); }
 .stream-caret { display: inline-block; width: 2px; height: 13px; margin-left: 2px; background: var(--accent); vertical-align: text-bottom; animation: pulse 0.9s var(--ease) infinite; }
 
-.message-actions { display: flex; gap: 3px; opacity: 0; pointer-events: none; transition: opacity 140ms var(--ease); }
+.message-actions { display: flex; gap: 3px; margin-top: -6px; opacity: 0; pointer-events: none; transition: opacity 140ms var(--ease); }
 .message-bubble:hover .message-actions, .message-bubble:focus-within .message-actions { opacity: 1; pointer-events: auto; }
 .message-bubble.user .message-actions { align-self: flex-end; }
 .message-actions .icon-button { width: 26px; height: 26px; min-height: 26px; }
