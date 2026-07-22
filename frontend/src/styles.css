@@ -102,7 +102,11 @@ button svg { width: 16px; height: 16px; }
 .cover-editor input { margin-top: 6px; }
 .citations { display: block; margin-top: 4px; font-weight: 400; }
 
-.chat-thread { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 22px clamp(18px, 3vw, 32px); scrollbar-color: color-mix(in srgb, var(--muted) 38%, transparent) transparent; }
+.chat-thread-shell { position: relative; flex: 1 1 auto; min-height: 0; }
+.chat-thread { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 22px clamp(18px, 3vw, 32px); scrollbar-color: color-mix(in srgb, var(--muted) 38%, transparent) transparent; }
+.jump-to-latest { position: absolute; right: 18px; bottom: 12px; width: 34px; height: 34px; min-height: 34px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--text-soft); box-shadow: 0 8px 24px rgb(41 51 42 / .16); }
+.jump-to-latest:hover { background: var(--surface-muted); color: var(--text); }
+.jump-to-latest svg { width: 15px; height: 15px; }
 .message-bubble { display: flex; flex-direction: column; gap: 10px; }
 .message-bubble.user { align-self: flex-end; max-width: 84%; }
 .message-bubble.user .message-text { border-radius: var(--radius); background: var(--accent); color: white; padding: 10px 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }

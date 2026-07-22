@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { CaretDown, Check, Copy, PencilSimple, Warning } from "@phosphor-icons/react";
+import { ArrowDown, CaretDown, Check, Copy, PencilSimple, Warning } from "@phosphor-icons/react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -307,11 +307,55 @@ const MessageBubble = memo(function MessageBubble({
 });
 
 export function ChatThread({ messages, actions }: { messages: ChatMessage[]; actions: ChatActions }) {
+  const threadRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const previousMessageCount = useRef(messages.length);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    if (messages.length > previousMessageCount.current) {
+      followLatest.current = true;
+      setShowJumpToLatest(false);
+    }
+    previousMessageCount.current = messages.length;
+    if (followLatest.current) thread.scrollTop = thread.scrollHeight;
+  }, [messages]);
+
   return (
-    <div className="chat-thread">
-      {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} actions={actions} />
-      ))}
+    <div className="chat-thread-shell">
+      <div
+        className="chat-thread"
+        ref={threadRef}
+        onScroll={(event) => {
+          const thread = event.currentTarget;
+          const distanceFromBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+          followLatest.current = distanceFromBottom < 72;
+          setShowJumpToLatest(!followLatest.current);
+        }}
+      >
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} actions={actions} />
+        ))}
+      </div>
+      {showJumpToLatest && (
+        <button
+          type="button"
+          className="jump-to-latest"
+          title="Scroll to latest message"
+          aria-label="Scroll to latest message"
+          onClick={() => {
+            const thread = threadRef.current;
+            if (!thread) return;
+            followLatest.current = true;
+            setShowJumpToLatest(false);
+            thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
+          }}
+        >
+          <ArrowDown />
+        </button>
+      )}
     </div>
   );
 }
