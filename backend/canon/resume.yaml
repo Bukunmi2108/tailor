@@ -33,7 +33,7 @@ experience:
     bullets:
       - {id: exp.qanooni.b1, text: "Integrated DocETL pipeline orchestration (Split → ParallelMap → CodeMap → Reduce).", tags: [pipelines, docetl, orchestration]}
       - {id: exp.qanooni.b2, text: "Shipped multilingual legal-AI evaluation: English and Arabic evaluation splits, jurisdiction-aware judge prompts, pipeline evaluations, and prompt optimization.", tags: [evaluation, multilingual, prompt-optimization]}
-      - {id: exp.qanooni.b3, text: "Built QCounsel, a 26-tool Pydantic AI agent running inside Microsoft Word for legal research, drafting, and litigation workflows; designed its evaluation framework, tool-routing classifier, and clarify-vs-act logic.", tags: [agents, pydantic-ai, evaluation, microsoft-word]}
+      - {id: exp.qanooni.b3, text: "Built QCounsel, a Pydantic AI agent running inside Microsoft Word for legal research, drafting, and litigation workflows; designed its evaluation framework, tool-routing classifier, and clarify-vs-act logic.", tags: [agents, pydantic-ai, evaluation, microsoft-word]}
       - {id: exp.qanooni.b4, text: "Production AI ops: feedback-triaged bug fixes from Langfuse trace IDs; span-level latency debugging; PostHog vs DB telemetry reconciliation for apply-rate analysis.", tags: [langfuse, observability, debugging, analytics]}
       - {id: exp.qanooni.b5, text: "Stack: Python, FastAPI, Pydantic AI, DocETL, Langfuse, Claude API, pytest, Ruff, Pyright.", tags: [python, fastapi, pydantic-ai, testing]}
   - id: exp.casesimpli
